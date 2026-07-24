@@ -1,0 +1,35 @@
+# CLAUDE.md
+
+Ulsaner(취약점 주입 훈련 엔진) 프로젝트의 개발 규칙. 코드를 작성하기 전에 이 파일과 아래 문서를 먼저 확인할 것.
+
+- 설계: [`docs/superpowers/specs/2026-07-23-vuln-injection-training-engine-design.md`](docs/superpowers/specs/2026-07-23-vuln-injection-training-engine-design.md)
+- 구현 계획: [`docs/superpowers/plans/2026-07-23-ulsaner-implementation-plan.md`](docs/superpowers/plans/2026-07-23-ulsaner-implementation-plan.md)
+- 논의 기록: [`docs/2026-07-24-design-review-qna.md`](docs/2026-07-24-design-review-qna.md)
+
+## 소유권 모델
+
+- **A(엔진)**: `engine/`, `templates/` — 슬롯 라이브러리, 주입 엔진(AST), 레퍼런스 익스플로잇, 자가검증, VibeCutter 벤치마크 하네스.
+- **B(플랫폼)**: `platform/`, `orchestrator/` — Docker 오케스트레이션, 검증 서비스, 웹 UI·대시보드.
+- **공용**: `contract/manifest_schema.json` — **수정 전 반드시 상대방에게 공지**. 이 파일이 두 파트를 잇는 유일한 계약이므로, 여기가 깨지면 양쪽 다 멈춘다.
+
+## 브랜치 전략 (git-flow, 경량화)
+
+1주일짜리 2인 프로젝트라 release/hotfix 브랜치는 두지 않고, main/develop/feature만 쓴다.
+
+- **`main`** — 항상 데모 가능한 상태만 유지. `develop`에서 통합 검증이 끝난 뒤에만 병합.
+- **`develop`** — 통합 브랜치. A/B 각자의 feature 브랜치가 여기로 먼저 들어온다.
+- **`feature/<owner>-<task>`** — 예: `feature/engine-easy-idor-slot`, `feature/platform-orchestrator-v1`. 작업 단위(구현 계획의 Day별 태스크)당 하나.
+- **병합 시점**: Day 3(바닥 E2E 게이트), Day 5(하드 코어 완료), Day 7(최종) — 이 시점마다 `develop → main` 병합 후 데모 가능한 상태인지 확인.
+- **계약 파일(`contract/manifest_schema.json`) 변경**은 별도 브랜치명 없이도 되지만, PR/커밋 전 상대방에게 먼저 알리고 진행한다.
+
+## 커밋 컨벤션
+
+기존 커밋 스타일을 따른다: `type: 설명` (한글 설명 가능).
+
+- `feat:` 새 기능, `fix:` 버그 수정, `docs:` 문서, `test:` 테스트, `refactor:` 리팩터링, `chore:` 잡일
+
+## 개발 원칙
+
+- **YAGNI**: 설계 문서 섹션 3의 비범위(회원가입, 리더보드, k8s 등)는 지금 만들지 않는다. 게이미피케이션처럼 나중에 얹을 걸 알고 있는 것도, 로깅 스키마에 필드 여유만 두고 실제 기능은 짓지 않는다.
+- **자가검증 우선**: 엔진이 생성한 인스턴스는 레퍼런스 익스플로잇이 실제로 통과해야만 출하한다. 이 게이트를 우회하는 코드는 작성하지 않는다.
+- **Day 3 게이트가 우선순위 기준**: `easy/idor` E2E가 막히면 SQLi·하드 티어보다 이 게이트 통과가 항상 우선이다.
