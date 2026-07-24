@@ -1,0 +1,78 @@
+"""플랫폼 FastAPI 엔드포인트 테스트 — 검증 서비스를 HTTP 로 노출.
+
+create_app 에 가짜 배포기를 주입한 ChallengeService 를 넣어 Docker 없이 HTTP 레이어를 검증.
+"""
+
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+from ulsaner_platform.app import create_app
+from ulsaner_platform.service import ChallengeService
+
+from orchestrator.runner import Instance
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FIXTURE = REPO_ROOT / "platform" / "fixtures" / "easy-idor-01"
+FLAG = "FLAG{idor_bob_private_2f9c}"
+
+
+def make_client() -> TestClient:
+    svc = ChallengeService(
+        deploy_fn=lambda bundle_dir, *, tag, container_port: Instance(
+            container_id=f"cont-{tag}", host_port=55000, url="http://127.0.0.1:55000"
+        ),
+        stop_fn=lambda container_id: None,
+        clock=lambda: 1000.0,
+    )
+    return TestClient(create_app(service=svc, bundles={"easy-idor-01": FIXTURE}))
+
+
+def test_health_still_ok():
+    assert make_client().get("/health").json() == {"status": "ok"}
+
+
+def test_list_challenges():
+    resp = make_client().get("/challenges")
+    assert resp.status_code == 200
+    assert "easy-idor-01" in resp.json()["available"]
+
+
+def test_spin_up_returns_url_and_prompt_without_flag():
+    resp = make_client().post("/challenges", json={"name": "easy-idor-01"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["challenge_id"]
+    assert body["url"] == "http://127.0.0.1:55000"
+    assert body["entry"]["task_prompt"]
+    assert "flag" not in body and "_internal" not in body
+
+
+def test_spin_up_unknown_challenge_is_404():
+    resp = make_client().post("/challenges", json={"name": "nope"})
+    assert resp.status_code == 404
+
+
+def test_submit_correct_then_wrong_flow():
+    client = make_client()
+    cid = client.post("/challenges", json={"name": "easy-idor-01"}).json()["challenge_id"]
+
+    wrong = client.post(f"/challenges/{cid}/submit", json={"flag": "FLAG{x}"})
+    assert wrong.json() == {"correct": False}
+
+    right = client.post(f"/challenges/{cid}/submit", json={"flag": FLAG})
+    assert right.json() == {"correct": True}
+
+    # 정답 후엔 teardown 되어 다시 제출 불가
+    again = client.post(f"/challenges/{cid}/submit", json={"flag": FLAG})
+    assert again.status_code == 404
+
+
+def test_stats_counts_attempts():
+    client = make_client()
+    cid = client.post("/challenges", json={"name": "easy-idor-01"}).json()["challenge_id"]
+    client.post(f"/challenges/{cid}/submit", json={"flag": "FLAG{x}"})
+    client.post(f"/challenges/{cid}/submit", json={"flag": FLAG})
+
+    stats = client.get("/stats").json()
+    assert stats["attempts"] == 2
+    assert stats["solved"] == 1
