@@ -31,6 +31,10 @@ def test_generate_easy_idor_bundle_e2e(tmp_path):
     assert isinstance(exploit_data["expected_flag"], str)
     assert len(exploit_data["expected_flag"]) > 0
 
+    # Easy tier must be unaffected by the hard-tier-only reorder pass (Task 12)
+    routes_code = (result / "app" / "routes" / "notes.py").read_text()
+    assert "note = get_note_by_id(note_id)" in routes_code
+
 
 @pytest.mark.integration
 def test_generate_bundle_raises_after_max_attempts_when_verification_always_fails(tmp_path):
