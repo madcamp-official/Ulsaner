@@ -11,9 +11,13 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 Runner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
+
+# 컨테이너는 localhost 에만 노출한다(외부 직접 접근 차단 — 설계 §11 격리).
+_HOST_BIND = "127.0.0.1"
 
 
 class OrchestratorError(RuntimeError):
@@ -48,15 +52,74 @@ def build_image(bundle_dir: str | Path, tag: str, *, runner: Runner = _default_r
     return tag
 
 
-def run_container(tag: str, *, name: str | None = None, runner: Runner = _default_runner) -> str:
-    """이미지를 detached 컨테이너로 실행하고 컨테이너 ID 를 반환한다."""
+def run_container(
+    tag: str,
+    *,
+    name: str | None = None,
+    publish_port: int | None = None,
+    runner: Runner = _default_runner,
+) -> str:
+    """이미지를 detached 컨테이너로 실행하고 컨테이너 ID 를 반환한다.
+
+    publish_port(컨테이너 내부 포트)를 주면 `127.0.0.1::<port>` 로 발행 →
+    docker 가 **랜덤 호스트 포트**를 골라 localhost 에만 매핑한다(동적 포트 + 격리).
+    """
     argv = ["docker", "run", "-d"]
     if name is not None:
         argv += ["--name", name]
+    if publish_port is not None:
+        argv += ["-p", f"{_HOST_BIND}::{publish_port}"]
     argv.append(tag)
 
     result = runner(argv)
     return (result.stdout or "").strip()
+
+
+def get_mapped_port(
+    container_id: str, container_port: int, *, runner: Runner = _default_runner
+) -> int:
+    """컨테이너 내부 포트에 매핑된 호스트 포트를 조회한다.
+
+    `docker port <cid> <port>/tcp` 는 "127.0.0.1:54321" 같은 줄을 낸다
+    (ipv4/ipv6 두 줄일 수 있어 첫 줄만 파싱).
+    """
+    result = runner(["docker", "port", container_id, f"{container_port}/tcp"])
+    lines = [ln for ln in (result.stdout or "").splitlines() if ln.strip()]
+    if not lines:
+        raise OrchestratorError(
+            f"컨테이너 {container_id} 의 {container_port} 포트 매핑을 찾을 수 없다"
+        )
+    # "host:port" 의 마지막 콜론 뒤가 포트 (ipv6 [::]:port 도 안전)
+    return int(lines[0].rsplit(":", 1)[1])
+
+
+def instance_url(host_port: int) -> str:
+    """호스트 포트로 학생 접속용 URL 을 만든다."""
+    return f"http://{_HOST_BIND}:{host_port}"
+
+
+@dataclass
+class Instance:
+    """배포된 인스턴스 핸들 — 컨테이너 ID + 접속 정보."""
+
+    container_id: str
+    host_port: int
+    url: str
+
+
+def deploy_bundle(
+    bundle_dir: str | Path,
+    tag: str,
+    container_port: int,
+    *,
+    name: str | None = None,
+    runner: Runner = _default_runner,
+) -> Instance:
+    """번들을 빌드 → 실행(동적 포트) → 매핑된 URL 까지 한 번에. v1-a + v1-b 조합."""
+    build_image(bundle_dir, tag, runner=runner)
+    container_id = run_container(tag, name=name, publish_port=container_port, runner=runner)
+    host_port = get_mapped_port(container_id, container_port, runner=runner)
+    return Instance(container_id=container_id, host_port=host_port, url=instance_url(host_port))
 
 
 def stop_container(container_id: str, *, runner: Runner = _default_runner) -> None:

@@ -10,8 +10,12 @@ import subprocess
 import pytest
 
 from orchestrator.runner import (
+    Instance,
     OrchestratorError,
     build_image,
+    deploy_bundle,
+    get_mapped_port,
+    instance_url,
     run_container,
     stop_container,
 )
@@ -79,3 +83,69 @@ def test_stop_container_force_removes_by_id():
     stop_container("abc123", runner=fake)
 
     assert fake.calls == [["docker", "rm", "-f", "abc123"]]
+
+
+# --- v1-b: 동적 포트 + URL -------------------------------------------------
+
+class ArgvRunner:
+    """argv 내용에 따라 다른 stdout 을 돌려주는 가짜 실행기 (deploy 조합 테스트용)."""
+
+    def __init__(self, *, run_stdout="cid123\n", port_stdout="127.0.0.1:54321\n"):
+        self.calls: list[list[str]] = []
+        self._run_stdout = run_stdout
+        self._port_stdout = port_stdout
+
+    def __call__(self, argv):
+        self.calls.append(argv)
+        out = ""
+        if "run" in argv:
+            out = self._run_stdout
+        elif "port" in argv:
+            out = self._port_stdout
+        return subprocess.CompletedProcess(argv, 0, stdout=out, stderr="")
+
+
+def test_run_container_publishes_dynamic_localhost_port():
+    fake = FakeRunner(stdout="cid\n")
+
+    run_container("img", publish_port=8000, runner=fake)
+
+    argv = fake.calls[0]
+    assert "-p" in argv
+    # 127.0.0.1:: 로 바인딩 → 호스트 랜덤 포트, localhost 에만 노출(격리)
+    assert "127.0.0.1::8000" in argv
+
+
+def test_get_mapped_port_parses_host_port():
+    fake = FakeRunner(stdout="127.0.0.1:54321\n")
+
+    port = get_mapped_port("cid", 8000, runner=fake)
+
+    assert port == 54321
+    assert fake.calls[0] == ["docker", "port", "cid", "8000/tcp"]
+
+
+def test_get_mapped_port_handles_multiline_output():
+    # docker 가 ipv4/ipv6 두 줄을 낼 수 있다.
+    fake = FakeRunner(stdout="0.0.0.0:49155\n[::]:49155\n")
+
+    assert get_mapped_port("cid", 8000, runner=fake) == 49155
+
+
+def test_instance_url_builds_localhost_url():
+    assert instance_url(54321) == "http://127.0.0.1:54321"
+
+
+def test_deploy_bundle_builds_runs_and_reports_instance(tmp_path):
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    fake = ArgvRunner(run_stdout="abc999\n", port_stdout="127.0.0.1:60001\n")
+
+    inst = deploy_bundle(tmp_path, "ulsaner-x:latest", container_port=8000, runner=fake)
+
+    assert isinstance(inst, Instance)
+    assert inst.container_id == "abc999"
+    assert inst.host_port == 60001
+    assert inst.url == "http://127.0.0.1:60001"
+    # build → run → port 순서로 docker 를 불렀는지
+    verbs = [c[1] for c in fake.calls]
+    assert verbs == ["build", "run", "port"]
