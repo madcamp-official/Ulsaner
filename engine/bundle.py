@@ -4,7 +4,7 @@ import pathlib
 import shutil
 import dataclasses
 from typing import Callable
-from . import params, injector, exploit_gen, verifier
+from . import params, injector, exploit_gen, verifier, reorder
 from . import manifest as manifest_mod
 from .slots.base import Slot
 
@@ -33,6 +33,13 @@ def generate_bundle(
         if app_dir.exists():
             shutil.rmtree(app_dir)
         injector.inject(TEMPLATE_DIR, app_dir, slot)
+        if slot.tier == "hard":
+            new_var_name = f"n{rng.getrandbits(16):04x}"
+            injector.apply_extra_transform(
+                app_dir,
+                slot.target_file,
+                lambda module: reorder.rename_local_variable(module, slot.target_function, "note", new_var_name),
+            )
         params.write_seed_data(app_dir, seed_data)
 
         exploit = exploit_gen.build_idor_exploit(seed_data, flag)
