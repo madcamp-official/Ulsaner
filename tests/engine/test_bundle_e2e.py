@@ -1,6 +1,7 @@
 import pytest
 from engine.bundle import generate_bundle, BundleGenerationError
 from engine.slots.easy_idor import build_easy_idor_slot
+from engine.slots.hard_idor import build_hard_idor_slot
 
 
 @pytest.mark.integration
@@ -53,3 +54,16 @@ def test_generate_bundle_raises_after_max_attempts_when_verification_always_fail
             solution_summary="summary",
             max_attempts=2,
         )
+
+
+@pytest.mark.integration
+def test_generate_hard_idor_bundle_e2e(tmp_path):
+    output_dir = tmp_path / "bundle-3"
+    result = generate_bundle(
+        seed=3,
+        output_dir=output_dir,
+        slot_builder=build_hard_idor_slot,
+        task_prompt="다른 사용자의 비공개 노트를 읽어 flag를 찾아라",
+        solution_summary="workspace_id 스코프 체크가 owner_id를 대신하는 결함을 이용 (같은 workspace의 다른 유저 노트 열람 가능)",
+    )
+    assert (result / "manifest.json").exists()
