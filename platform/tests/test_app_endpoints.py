@@ -31,10 +31,23 @@ def test_health_still_ok():
     assert make_client().get("/health").json() == {"status": "ok"}
 
 
-def test_list_challenges():
+def test_list_challenges_includes_metadata():
+    # 카드에 보여줄 정보(취약점 종류·난이도·과제)를 배포 없이 제공. flag 는 절대 미노출.
     resp = make_client().get("/challenges")
     assert resp.status_code == 200
-    assert "easy-idor-01" in resp.json()["available"]
+    items = resp.json()["available"]
+    item = next(c for c in items if c["name"] == "easy-idor-01")
+    assert item["vuln_type"] == "idor"
+    assert item["tier"] == "easy"
+    assert item["task_prompt"]
+    assert "flag" not in item
+
+
+def test_root_serves_web_ui():
+    resp = make_client().get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Ulsaner" in resp.text
 
 
 def test_spin_up_returns_url_and_prompt_without_flag():

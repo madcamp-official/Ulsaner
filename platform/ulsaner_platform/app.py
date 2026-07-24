@@ -16,11 +16,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from ulsaner_platform.manifest import load_bundle_manifest
 from ulsaner_platform.service import ChallengeNotFound, ChallengeService
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_BUNDLES: dict[str, Path] = {
     "easy-idor-01": _REPO_ROOT / "platform" / "fixtures" / "easy-idor-01",
 }
@@ -49,13 +52,29 @@ def create_app(
         version="0.2.0",
     )
 
+    @app.get("/", response_class=HTMLResponse)
+    def index() -> str:
+        return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}
 
     @app.get("/challenges")
     def list_challenges() -> dict:
-        return {"available": list(bundles)}
+        # 카드용 메타데이터를 배포 없이 manifest 에서 읽어 제공(flag/_internal 제외).
+        available = []
+        for name, bundle_dir in bundles.items():
+            manifest = load_bundle_manifest(bundle_dir)
+            available.append(
+                {
+                    "name": name,
+                    "vuln_type": manifest.vuln_type,
+                    "tier": manifest.tier,
+                    "task_prompt": manifest.task_prompt,
+                }
+            )
+        return {"available": available}
 
     @app.post("/challenges")
     def spin_up(req: SpinUpRequest) -> dict:
