@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/madcamp-official/Ulsaner/contract/manifest_schema.json",
+  "title": "Ulsaner Challenge Bundle Manifest",
+  "description": "엔진(Part A)이 생성하고 플랫폼(Part B)이 소비하는 챌린지 번들의 메타데이터 계약. 설계 문서 §5. 유일한 공용 파일 — 수정 전 팀에 공지.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "vuln_type", "tier", "entry", "flag", "verify"],
+  "properties": {
+    "id": {
+      "description": "인스턴스 고유 식별자 (UUID). 플랫폼이 배포/검증/로깅의 키로 사용.",
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "vuln_type": {
+      "description": "취약점 클래스. MVP는 idor/sqli 2종.",
+      "type": "string",
+      "enum": ["idor", "sqli"]
+    },
+    "tier": {
+      "description": "난이도 티어. easy=대조군(교과서), hard=주력(로직/접근제어 결함).",
+      "type": "string",
+      "enum": ["easy", "hard"]
+    },
+    "entry": {
+      "description": "학생에게 노출되는 진입 정보 (블랙박스). 실행 앱 포트 + 과제 프롬프트.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port", "task_prompt"],
+      "properties": {
+        "port": {
+          "description": "번들 앱이 컨테이너 내부에서 리슨하는 포트.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "task_prompt": {
+          "description": "과제 의도를 평문으로 명시 (의도는 숨기지 않는다 — 설계 리뷰 §7). 예: '다른 사용자의 비공개 데이터를 읽어 flag를 찾아라'.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "flag": {
+      "description": "익스플로잇해야만 도달하는 비밀값. 검증 서비스가 문자열 비교로 판정 (§10). 반드시 FLAG{...} 형식.",
+      "type": "string",
+      "pattern": "^FLAG\\{[^}]+\\}$"
+    },
+    "verify": {
+      "description": "검증 방식. MVP는 flag 제출 비교 단일 방식.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["flag_submit"]
+        }
+      }
+    },
+    "_internal": {
+      "description": "플랫폼/엔진 내부 전용 부가정보 (학생 비노출). 선택 필드. 자유 형식이라 additionalProperties 허용.",
+      "type": "object",
+      "properties": {
+        "flag_planted_in": {
+          "type": "string",
+          "description": "flag가 심어진 위치 설명 (디버깅/데모용)."
+        },
+        "reference_exploit": {
+          "type": "string",
+          "description": "레퍼런스 익스플로잇 경로 (자가검증/벤치마크용)."
+        },
+        "solution_summary": {
+          "type": "string",
+          "description": "정답 요약 (사람용)."
+        }
+      }
+    }
+  }
+}
