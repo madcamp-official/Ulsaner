@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/madcamp-official/Ulsaner/contract/manifest_schema.json",
-  "title": "Ulsaner Challenge Bundle Manifest",
+  "title": "Ulsaner Challenge Manifest",
   "description": "엔진(Part A)이 생성하고 플랫폼(Part B)이 소비하는 챌린지 번들의 메타데이터 계약. 설계 문서 §5. 유일한 공용 파일 — 수정 전 팀에 공지.",
   "type": "object",
   "additionalProperties": false,
