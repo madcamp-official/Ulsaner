@@ -1,6 +1,7 @@
 # Ulsaner — 구현 계획 (7일)
 
 > 설계 문서: [2026-07-23-vuln-injection-training-engine-design.md](../specs/2026-07-23-vuln-injection-training-engine-design.md)
+> A(엔진) 파트 상세 TDD 구현 계획: [2026-07-24-ulsaner-engine-implementation-plan.md](2026-07-24-ulsaner-engine-implementation-plan.md)
 > 몰입캠프 4주차 · 2인 · 작성일 2026-07-23
 
 ## 소유권 모델
@@ -42,12 +43,12 @@
 
 ### Day 4 — 일반성 & 견고화
 - A: `easy/sqli` 완성(2종 처리=일반성) + 자가검증 확장
-- A: `hard/idor` 로직결함 슬롯 착수
+- A: `hard/idor` 슬롯 착수 — 권한 체크는 존재하되 틀린 필드/스코프(workspace_id 등)를 비교하도록 설계(존재 vs 정확성)
 - B: 오케스트레이터 견고화(동시 상한·헬스체크·고아 회수·에러처리)
 - B: 대시보드 v1(시도/성공 통계)
 
 ### Day 5 — 하드 코어 (AST)
-- A: `hard/idor` + AST 배치/재배열(libcst) ← 난이도 핵심
+- A: `hard/idor` + AST 배치/재배열(libcst) ← "체크 존재 vs 정확성" 차별화의 핵심 구현
 - A: Semgrep "안 잡힘" 테스트 추가
 - 🤝 VibeCutter 벤치마크 셋업(클론/실행, 화이트박스 실행 준비)
 - B: 대시보드 "VibeCutter vs 사람" 뷰
