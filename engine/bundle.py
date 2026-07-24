@@ -1,6 +1,8 @@
+import json
 import random
 import pathlib
 import shutil
+import dataclasses
 from typing import Callable
 from . import params, injector, exploit_gen, verifier
 from . import manifest as manifest_mod
@@ -37,6 +39,14 @@ def generate_bundle(
         tag = f"ulsaner-bundle-{seed}-{attempt}"
 
         if verifier.verify_bundle(app_dir, exploit, tag):
+            # Write reference exploit
+            exploits_dir = output_dir / "exploits"
+            exploits_dir.mkdir(parents=True, exist_ok=True)
+            exploit_json_path = exploits_dir / "reference.json"
+            exploit_dict = dataclasses.asdict(exploit)
+            with open(exploit_json_path, "w") as f:
+                json.dump(exploit_dict, f, indent=2)
+
             m = manifest_mod.build_manifest(
                 vuln_type=slot.vuln_type,
                 tier=slot.tier,
