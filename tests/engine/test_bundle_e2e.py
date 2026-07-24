@@ -5,6 +5,7 @@ from engine.slots.easy_idor import build_easy_idor_slot
 
 @pytest.mark.integration
 def test_generate_easy_idor_bundle_e2e(tmp_path):
+    import json
     output_dir = tmp_path / "bundle-1"
     result = generate_bundle(
         seed=1,
@@ -16,6 +17,18 @@ def test_generate_easy_idor_bundle_e2e(tmp_path):
     assert (result / "manifest.json").exists()
     assert (result / "app" / "seed_data.json").exists()
     assert (result / "app" / "Dockerfile").exists()
+
+    # Assert reference exploit file exists and has expected structure
+    exploit_path = result / "exploits" / "reference.json"
+    assert exploit_path.exists()
+    with open(exploit_path) as f:
+        exploit_data = json.load(f)
+    assert "method" in exploit_data
+    assert "path" in exploit_data
+    assert "headers" in exploit_data
+    assert "expected_flag" in exploit_data
+    assert isinstance(exploit_data["expected_flag"], str)
+    assert len(exploit_data["expected_flag"]) > 0
 
 
 @pytest.mark.integration
