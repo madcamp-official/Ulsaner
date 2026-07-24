@@ -56,6 +56,11 @@ def create_app(
     def index() -> str:
         return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
+    @app.get("/v2", response_class=HTMLResponse)
+    def index_v2() -> str:
+        # 대안 디자인(다크 콘솔) — 비교용.
+        return (_STATIC_DIR / "index_claude.html").read_text(encoding="utf-8")
+
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}

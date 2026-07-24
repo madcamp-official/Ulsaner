@@ -50,6 +50,13 @@ def test_root_serves_web_ui():
     assert "Ulsaner" in resp.text
 
 
+def test_v2_serves_alt_design():
+    resp = make_client().get("/v2")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "console" in resp.text  # 다크 콘솔 디자인 마커
+
+
 def test_spin_up_returns_url_and_prompt_without_flag():
     resp = make_client().post("/challenges", json={"name": "easy-idor-01"})
     assert resp.status_code == 200
