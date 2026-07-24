@@ -8,7 +8,7 @@ SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "contract" / "manife
 
 def test_schema_file_is_valid_json():
     schema = json.loads(SCHEMA_PATH.read_text())
-    assert schema["title"] == "Ulsaner Challenge Manifest"
+    assert schema["title"] == "Ulsaner Challenge Bundle Manifest"
 
 
 def test_build_manifest_has_required_fields():
