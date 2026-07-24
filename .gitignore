@@ -26,3 +26,15 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.superpowers/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
