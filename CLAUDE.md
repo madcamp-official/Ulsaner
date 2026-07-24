@@ -12,15 +12,15 @@ Ulsaner(취약점 주입 훈련 엔진) 프로젝트의 개발 규칙. 코드를
 - **B(플랫폼)**: `platform/`, `orchestrator/` — Docker 오케스트레이션, 검증 서비스, 웹 UI·대시보드.
 - **공용**: `contract/manifest_schema.json` — **수정 전 반드시 상대방에게 공지**. 이 파일이 두 파트를 잇는 유일한 계약이므로, 여기가 깨지면 양쪽 다 멈춘다.
 
-## 브랜치 전략 (git-flow, 경량화)
+## 브랜치 전략 (팀원별 단일 브랜치)
 
-1주일짜리 2인 프로젝트라 release/hotfix 브랜치는 두지 않고, main/develop/feature만 쓴다.
+1주일짜리 2인 프로젝트라 태스크별 브랜치 대신 **사람별 브랜치 하나**로 간소화한다.
 
-- **`main`** — 항상 데모 가능한 상태만 유지. `develop`에서 통합 검증이 끝난 뒤에만 병합.
-- **`develop`** — 통합 브랜치. A/B 각자의 feature 브랜치가 여기로 먼저 들어온다.
-- **`feature/<owner>-<task>`** — 예: `feature/engine-easy-idor-slot`, `feature/platform-orchestrator-v1`. 작업 단위(구현 계획의 Day별 태스크)당 하나.
-- **병합 시점**: Day 3(바닥 E2E 게이트), Day 5(하드 코어 완료), Day 7(최종) — 이 시점마다 `develop → main` 병합 후 데모 가능한 상태인지 확인.
-- **계약 파일(`contract/manifest_schema.json`) 변경**은 별도 브랜치명 없이도 되지만, PR/커밋 전 상대방에게 먼저 알리고 진행한다.
+- **`main`** — 항상 데모 가능한 상태만 유지.
+- **`feature-sy`** — A(엔진, `engine/`·`templates/`) 담당자 브랜치. 이 플랜의 모든 태스크는 여기서 커밋된다.
+- **`feature-mj`** — B(플랫폼, `platform/`·`orchestrator/`) 담당자 브랜치.
+- **병합 시점**: Day 3(바닥 E2E 게이트), Day 5(하드 코어 완료), Day 7(최종) — 이 시점마다 각자 브랜치를 `main`으로 병합 후 데모 가능한 상태인지 확인.
+- **계약 파일(`contract/manifest_schema.json`) 변경**은 어느 브랜치에서 하든, 커밋 전 상대방에게 먼저 알리고 진행한다.
 
 ## 커밋 컨벤션
 
