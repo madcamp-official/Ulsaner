@@ -54,11 +54,17 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
+        # 주 UI — Claude Design 핸드오프를 재현·실배선한 버전.
+        return (_STATIC_DIR / "index_dc.html").read_text(encoding="utf-8")
+
+    @app.get("/a", response_class=HTMLResponse)
+    def index_a() -> str:
+        # 대안 디자인 A(교육형 claymorphism) — 비교용.
         return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
     @app.get("/v2", response_class=HTMLResponse)
     def index_v2() -> str:
-        # 대안 디자인(다크 콘솔) — 비교용.
+        # 대안 디자인 B(다크 콘솔) — 비교용.
         return (_STATIC_DIR / "index_claude.html").read_text(encoding="utf-8")
 
     @app.get("/health")
@@ -97,6 +103,12 @@ def create_app(
                 status_code=404, detail="챌린지를 찾을 수 없거나 이미 해결됨"
             ) from exc
         return {"correct": correct}
+
+    @app.delete("/challenges/{challenge_id}")
+    def teardown(challenge_id: str) -> dict:
+        # 인스턴스 종료(수동 teardown). 이미 없으면 조용히 성공(멱등).
+        service.teardown(challenge_id)
+        return {"ok": True}
 
     @app.get("/stats")
     def stats() -> dict:
