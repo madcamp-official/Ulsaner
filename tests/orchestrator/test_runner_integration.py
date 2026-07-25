@@ -13,7 +13,13 @@ from pathlib import Path
 import httpx
 import pytest
 
-from orchestrator.runner import deploy_bundle, stop_container
+from orchestrator.runner import (
+    container_state,
+    deploy_bundle,
+    list_managed,
+    reclaim_orphans,
+    stop_container,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -60,3 +66,45 @@ def test_deploy_fixture_and_exploit_over_mapped_port():
         assert flag in exploit.json()["content"]
     finally:
         stop_container(inst.container_id)
+
+
+def test_deploy_with_readiness_returns_only_when_app_listens():
+    # wait_ready=True 면 반환 시점에 앱이 이미 리슨 중이어야 한다(폴링 불필요).
+    manifest = json.loads((FIXTURE / "manifest.json").read_text(encoding="utf-8"))
+    inst = deploy_bundle(
+        FIXTURE, "ulsaner-orch-ready:latest",
+        container_port=manifest["entry"]["port"], wait_ready=True, ready_timeout=45,
+    )
+    try:
+        assert container_state(inst.container_id) == "running"
+        # 준비 대기가 반환됐으니 곧바로 접속 가능해야 한다.
+        assert httpx.get(f"{inst.url}/", timeout=5).status_code == 200
+    finally:
+        stop_container(inst.container_id)
+
+
+def test_reclaim_orphans_removes_untracked_managed_container():
+    manifest = json.loads((FIXTURE / "manifest.json").read_text(encoding="utf-8"))
+    keep = deploy_bundle(
+        FIXTURE, "ulsaner-orch-keep:latest",
+        container_port=manifest["entry"]["port"], wait_ready=True, ready_timeout=45,
+    )
+    orphan = deploy_bundle(
+        FIXTURE, "ulsaner-orch-orphan:latest",
+        container_port=manifest["entry"]["port"], wait_ready=True, ready_timeout=45,
+    )
+    try:
+        managed = list_managed()
+        assert keep.container_id in managed
+        assert orphan.container_id in managed
+
+        # keep 만 보존 → orphan 회수.
+        removed = reclaim_orphans({keep.container_id})
+        assert orphan.container_id in removed
+        assert keep.container_id not in removed
+
+        after = list_managed()
+        assert keep.container_id in after  # 추적 중인 건 살아남고
+        assert orphan.container_id not in after  # 고아는 사라졌다
+    finally:
+        reclaim_orphans(set())  # 이 테스트가 띄운 관리 컨테이너 정리(멱등)

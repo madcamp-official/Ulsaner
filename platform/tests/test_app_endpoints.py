@@ -102,6 +102,32 @@ def test_spin_up_unknown_challenge_is_404():
     assert resp.status_code == 404
 
 
+def test_spin_up_at_capacity_returns_503():
+    # 동시 상한 도달 시 새 스핀업은 503 으로 거절한다.
+    svc = ChallengeService(
+        deploy_fn=lambda bundle_dir, *, tag, container_port: Instance(
+            container_id=f"cont-{tag}", host_port=55000, url="http://127.0.0.1:55000"
+        ),
+        stop_fn=lambda container_id: None,
+        clock=lambda: 1000.0,
+        max_active=1,
+    )
+    challenges = [
+        Challenge(
+            name="easy-idor-01",
+            vuln_type="idor",
+            tier="easy",
+            task_prompt="다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요.",
+            provision=fixture_source(FIXTURE),
+        )
+    ]
+    client = TestClient(create_app(service=svc, challenges=challenges))
+
+    assert client.post("/challenges", json={"name": "easy-idor-01"}).status_code == 200
+    resp = client.post("/challenges", json={"name": "easy-idor-01"})
+    assert resp.status_code == 503
+
+
 def test_submit_correct_then_wrong_flow():
     client = make_client()
     cid = client.post("/challenges", json={"name": "easy-idor-01"}).json()["challenge_id"]
