@@ -116,3 +116,34 @@ def test_stats_counts_attempts():
     stats = client.get("/stats").json()
     assert stats["attempts"] == 2
     assert stats["solved"] == 1
+
+
+def test_stats_breakdown_by_tier_and_vuln():
+    client = make_client()
+    cid = client.post("/challenges", json={"name": "easy-idor-01"}).json()["challenge_id"]
+    client.post(f"/challenges/{cid}/submit", json={"flag": "FLAG{wrong}"})  # 오답
+    client.post(f"/challenges/{cid}/submit", json={"flag": FLAG})  # 정답 → teardown
+
+    stats = client.get("/stats").json()
+    assert stats["attempts"] == 2
+    assert stats["solved"] == 1
+    assert stats["success_rate"] == 0.5
+    assert stats["by_tier"]["easy"] == {"attempts": 2, "solved": 1}
+    assert stats["by_vuln"]["idor"] == {"attempts": 2, "solved": 1}
+    # VibeCutter 벤치마크는 아직 미실행 → 자리표시자 None
+    assert stats["vibecutter"] is None
+
+
+def test_stats_empty_is_zero_rate():
+    stats = make_client().get("/stats").json()
+    assert stats == {
+        "attempts": 0, "solved": 0, "success_rate": 0.0,
+        "by_tier": {}, "by_vuln": {}, "vibecutter": None,
+    }
+
+
+def test_dashboard_page_serves():
+    resp = make_client().get("/dashboard")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "VibeCutter" in resp.text
