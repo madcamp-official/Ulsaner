@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ulsaner — 웹 취약점 훈련장</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Crimson+Pro:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --primary: #0369A1; --on-primary: #FFFFFF; --secondary: #0EA5E9;
+    --accent: #16A34A; --bg: #F0F9FF; --fg: #0C4A6E; --muted: #E7EFF5;
+    --border: #BAE6FD; --destructive: #DC2626; --ring: #0369A1;
+    --card: #FFFFFF; --fg-soft: #3B6E93;
+    --radius: 18px; --shadow: 0 1px 2px rgba(12,74,110,.06), 0 8px 24px rgba(12,74,110,.10);
+    --shadow-press: inset 0 2px 6px rgba(12,74,110,.12);
+    --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
+    --font-head: "Crimson Pro", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 20px 64px; }
+
+  /* Header */
+  header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 8px 0 4px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand .logo {
+    width: 46px; height: 46px; border-radius: 14px; background: var(--primary);
+    color: var(--on-primary); display: grid; place-items: center; box-shadow: var(--shadow);
+    flex-shrink: 0;
+  }
+  .brand h1 { font-family: var(--font-head); font-size: 28px; font-weight: 700; margin: 0; line-height: 1.1; }
+  .brand p { margin: 2px 0 0; color: var(--fg-soft); font-size: 14px; }
+  .stats {
+    margin-left: auto; display: flex; gap: 8px; align-items: center;
+    background: var(--card); border: 1px solid var(--border); border-radius: 999px;
+    padding: 8px 16px; box-shadow: var(--shadow); font-size: 14px; white-space: nowrap;
+  }
+  .stats b { font-family: var(--font-head); font-size: 18px; }
+  .stats .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  .intro {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 22px; box-shadow: var(--shadow); margin: 20px 0 28px;
+  }
+  .intro h2 { font-family: var(--font-head); font-size: 21px; margin: 0 0 6px; }
+  .intro p { margin: 0; color: var(--fg-soft); }
+  .intro .steps { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .step { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--fg-soft); }
+  .step .num {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--muted); color: var(--primary);
+    display: grid; place-items: center; font-weight: 700; font-size: 12px; flex-shrink: 0;
+  }
+
+  h3.section { font-family: var(--font-head); font-size: 20px; margin: 0 0 14px; }
+
+  /* Challenge cards */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px;
+  }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge {
+    font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; letter-spacing: .2px;
+  }
+  .badge.type { background: #E0F2FE; color: #075985; }
+  .badge.easy { background: #DCFCE7; color: #166534; }
+  .badge.hard { background: #FEE2E2; color: #991B1B; }
+  .card .name { font-family: var(--font-head); font-size: 17px; font-weight: 600; }
+  .card .prompt { color: var(--fg-soft); font-size: 14px; margin: 0; }
+
+  /* Buttons */
+  button {
+    font-family: var(--font-body); font-size: 15px; font-weight: 700; cursor: pointer;
+    border: none; border-radius: 12px; padding: 12px 18px; min-height: 44px;
+    transition: transform .15s ease, box-shadow .2s ease, background .2s ease;
+  }
+  button:active { transform: translateY(1px); }
+  button:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+  .btn-primary { background: var(--primary); color: var(--on-primary); box-shadow: var(--shadow); margin-top: auto; }
+  .btn-primary:hover { background: #075985; }
+  .btn-accent { background: var(--accent); color: #fff; box-shadow: var(--shadow); }
+  .btn-accent:hover { background: #15803D; }
+  .btn-ghost { background: var(--muted); color: var(--primary); }
+  .btn-ghost:hover { background: #D6E6F1; }
+
+  /* Active challenge panel */
+  #panel { margin-top: 30px; scroll-margin-top: 20px; }
+  #panel[hidden] { display: none; }
+  .panel-card {
+    background: var(--card); border: 2px solid var(--primary); border-radius: 22px;
+    padding: 22px; box-shadow: var(--shadow);
+  }
+  .panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .panel-head h3 { font-family: var(--font-head); font-size: 20px; margin: 0; }
+  .cid { font-size: 12px; color: var(--fg-soft); background: var(--muted); padding: 3px 8px; border-radius: 6px; font-family: ui-monospace, monospace; }
+  .task {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px 16px; margin: 4px 0 16px; color: var(--fg);
+  }
+  .task .label { font-size: 12px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 4px; }
+  .url-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .url-row code { font-family: ui-monospace, monospace; font-size: 14px; background: var(--muted); padding: 8px 12px; border-radius: 10px; color: var(--fg); word-break: break-all; }
+  .submit-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .submit-row input {
+    flex: 1; min-width: 200px; font-family: ui-monospace, monospace; font-size: 15px;
+    padding: 12px 14px; border: 2px solid var(--border); border-radius: 12px; color: var(--fg); background: #fff;
+    min-height: 44px;
+  }
+  .submit-row input:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(3,105,161,.18); }
+  .result { margin-top: 14px; padding: 12px 16px; border-radius: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .result[hidden] { display: none; }
+  .result.ok { background: #DCFCE7; color: #166534; }
+  .result.no { background: #FEE2E2; color: #991B1B; }
+
+  a.plain { color: var(--primary); text-decoration: none; font-weight: 700; }
+  a.plain:hover { text-decoration: underline; }
+  footer { margin-top: 40px; color: var(--fg-soft); font-size: 13px; text-align: center; }
+  .icon { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .empty { color: var(--fg-soft); padding: 20px; text-align: center; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (max-width: 520px) { .brand h1 { font-size: 24px; } .stats { margin-left: 0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg class="icon" viewBox="0 0 24 24" style="width:26px;height:26px"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+      </div>
+      <div>
+        <h1>Ulsaner</h1>
+        <p>매번 새로 생성되는 웹 취약점 훈련장</p>
+      </div>
+    </div>
+    <div class="stats" id="stats" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span>
+      <span>풀이 <b id="stat-solved">0</b></span>
+      <span style="color:var(--fg-soft)">/ 시도 <b id="stat-attempts">0</b></span>
+    </div>
+    <a href="/v2" style="font-size:13px;color:var(--primary);text-decoration:none;font-weight:700;border:1px solid var(--border);border-radius:999px;padding:9px 14px;white-space:nowrap;background:var(--card);box-shadow:var(--shadow)">디자인 B →</a>
+  </header>
+
+  <section class="intro">
+    <h2>직접 공략해서 flag를 찾으세요</h2>
+    <p>문제는 매번 새로 생성돼 인터넷에도 없습니다. 외운 답이 아니라 실제로 풀어야 통과해요.</p>
+    <div class="steps">
+      <span class="step"><span class="num">1</span> 챌린지 시작</span>
+      <span class="step"><span class="num">2</span> 주어진 앱을 공격해 flag 획득</span>
+      <span class="step"><span class="num">3</span> flag 제출로 채점</span>
+    </div>
+  </section>
+
+  <h3 class="section">챌린지 선택</h3>
+  <div class="grid" id="grid"><div class="empty">불러오는 중…</div></div>
+
+  <section id="panel" hidden aria-live="polite">
+    <div class="panel-card">
+      <div class="panel-head">
+        <svg class="icon" viewBox="0 0 24 24" style="color:var(--primary)"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        <h3 id="panel-title">챌린지 진행 중</h3>
+        <span class="cid" id="panel-cid"></span>
+      </div>
+      <div class="task">
+        <span class="label">과제</span>
+        <span id="panel-prompt"></span>
+      </div>
+      <div class="url-row">
+        <span style="font-size:13px;color:var(--fg-soft)">공략 대상:</span>
+        <code id="panel-url"></code>
+        <a class="plain" id="panel-open" href="#" target="_blank" rel="noopener">
+          앱 열기 ↗
+        </a>
+      </div>
+      <div class="submit-row">
+        <input id="flag-input" type="text" placeholder="FLAG{...} 형식으로 붙여넣기" aria-label="flag 입력" autocomplete="off" />
+        <button class="btn-accent" id="submit-btn" type="button">flag 제출</button>
+      </div>
+      <div class="result" id="result" hidden></div>
+    </div>
+  </section>
+
+  <footer>Ulsaner · 몰입캠프 26s-w4-c2-03 — 취약점 주입 훈련 엔진</footer>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let current = null; // { challenge_id, url }
+
+  async function api(path, opts) {
+    const res = await fetch(path, opts);
+    return { ok: res.ok, status: res.status, data: await res.json().catch(() => null) };
+  }
+
+  const TYPE_LABEL = { idor: "IDOR", sqli: "SQL Injection" };
+
+  async function loadChallenges() {
+    const { data } = await api("/challenges");
+    const grid = $("grid");
+    const items = (data && data.available) || [];
+    if (!items.length) { grid.innerHTML = '<div class="empty">사용 가능한 챌린지가 없습니다.</div>'; return; }
+    grid.innerHTML = "";
+    for (const c of items) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="badges">
+          <span class="badge type">${TYPE_LABEL[c.vuln_type] || c.vuln_type}</span>
+          <span class="badge ${c.tier}">${c.tier === "easy" ? "쉬움" : "어려움"}</span>
+        </div>
+        <div class="name">${c.name}</div>
+        <p class="prompt">${c.task_prompt}</p>
+        <button class="btn-primary" type="button">시작하기</button>`;
+      card.querySelector("button").addEventListener("click", () => startChallenge(c.name));
+      grid.appendChild(card);
+    }
+  }
+
+  async function startChallenge(name) {
+    const { ok, data } = await api("/challenges", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!ok || !data) return;
+    current = { challenge_id: data.challenge_id, url: data.url };
+    $("panel-cid").textContent = "#" + data.challenge_id.slice(0, 8);
+    $("panel-prompt").textContent = data.entry.task_prompt;
+    $("panel-url").textContent = data.url;
+    $("panel-open").href = data.url;
+    $("result").hidden = true;
+    $("flag-input").value = "";
+    $("panel").hidden = false;
+    $("panel").scrollIntoView({ behavior: "smooth", block: "start" });
+    $("flag-input").focus();
+  }
+
+  async function submitFlag() {
+    if (!current) return;
+    const flag = $("flag-input").value.trim();
+    if (!flag) return;
+    const result = $("result");
+    const { ok, status, data } = await api(`/challenges/${current.challenge_id}/submit`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flag }),
+    });
+    result.hidden = false;
+    if (ok && data && data.correct) {
+      result.className = "result ok";
+      result.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg> 정답입니다! 챌린지를 해결했어요.';
+      current = null;
+    } else if (status === 404) {
+      result.className = "result no";
+      result.textContent = "이미 해결됐거나 만료된 챌린지입니다.";
+    } else {
+      result.className = "result no";
+      result.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> 아직 아니에요. 다시 시도해 보세요.';
+    }
+    loadStats();
+  }
+
+  async function loadStats() {
+    const { data } = await api("/stats");
+    if (!data) return;
+    $("stat-attempts").textContent = data.attempts;
+    $("stat-solved").textContent = data.solved;
+  }
+
+  $("submit-btn").addEventListener("click", submitFlag);
+  $("flag-input").addEventListener("keydown", (e) => { if (e.key === "Enter") submitFlag(); });
+
+  loadChallenges();
+  loadStats();
+</script>
+</body>
+</html>
