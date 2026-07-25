@@ -63,3 +63,13 @@ def test_planted_flag_matches_manifest():
     resp = client.get(f"/notes/{VICTIM_NOTE_ID}", headers=ATTACKER)
     assert m.flag in resp.json()["content"]
     assert m.check_flag(m.flag)
+
+
+def test_root_serves_landing_page():
+    # 접속 URL 을 그냥 열면 404 대신 안내 페이지(인증 힌트 포함, 취약점은 비노출).
+    client = TestClient(load_fixture_app())
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "alice-token" in resp.text
+    assert "FLAG{idor" not in resp.text  # flag 는 노출 금지
