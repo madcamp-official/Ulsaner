@@ -14,9 +14,10 @@ Docker 조작은 `docker` CLI 를 subprocess 로 감싼다 — 로컬이 Colima 
 
 from __future__ import annotations
 
-import socket
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -139,13 +140,21 @@ def container_logs(
     return ((result.stdout or "") + (result.stderr or "")).strip()
 
 
-def _tcp_probe(host: str, port: int, timeout: float) -> bool:
-    """host:port 로 TCP 연결이 되면(앱이 리슨 중이면) True. 라우트/상태코드에 무관."""
+def _http_probe(host: str, port: int, timeout: float) -> bool:
+    """host:port 로 HTTP 응답이 오면(앱이 실제로 요청을 처리하면) True.
+
+    TCP 연결만으로는 부족하다 — docker 의 포트 프록시는 컨테이너 앱이 바인딩되기 전에도
+    연결을 받아버려, 아직 안 뜬 URL 을 '준비됨'으로 오판할 수 있다. HTTP 응답(상태코드가
+    4xx/5xx여도 서버가 답한 것)을 준비 신호로 본다.
+    """
+    url = f"http://{host}:{port}/"
     try:
-        with socket.create_connection((host, port), timeout=timeout):
+        with urllib.request.urlopen(url, timeout=timeout):  # localhost 고정 URL
             return True
-    except OSError:
-        return False
+    except urllib.error.HTTPError:
+        return True  # 서버가 상태코드로 답함 = 리슨 중
+    except (urllib.error.URLError, OSError):
+        return False  # 연결 거부·리셋·타임아웃 = 아직 안 뜸
 
 
 def wait_until_ready(
@@ -154,7 +163,7 @@ def wait_until_ready(
     *,
     timeout: float = 30.0,
     interval: float = 0.5,
-    probe: Probe = _tcp_probe,
+    probe: Probe = _http_probe,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
     runner: Runner = _default_runner,
@@ -215,7 +224,7 @@ def deploy_bundle(
     name: str | None = None,
     wait_ready: bool = False,
     ready_timeout: float = 30.0,
-    probe: Probe = _tcp_probe,
+    probe: Probe = _http_probe,
     runner: Runner = _default_runner,
 ) -> Instance:
     """번들을 빌드 → 실행(동적 포트) → 매핑된 URL 까지 한 번에. v1-a + v1-b 조합.

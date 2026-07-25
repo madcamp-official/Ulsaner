@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,9 +22,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from ulsaner_platform.service import ChallengeNotFound, ChallengeService
+from orchestrator.runner import OrchestratorError
+from ulsaner_platform.service import (
+    CapacityError,
+    ChallengeNotFound,
+    ChallengeService,
+)
 from ulsaner_platform.sources import Provision, engine_source, fixture_source
 
+_log = logging.getLogger("ulsaner.platform")
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _FIXTURE_DIR = _REPO_ROOT / "platform" / "fixtures" / "easy-idor-01"
@@ -74,16 +82,33 @@ def create_app(
     *,
     service: ChallengeService | None = None,
     challenges: list[Challenge] | None = None,
+    reclaim_on_startup: bool = False,
 ) -> FastAPI:
-    """앱을 조립한다. service/challenges 를 주입할 수 있어 테스트에서 Docker 를 우회한다."""
+    """앱을 조립한다. service/challenges 를 주입할 수 있어 테스트에서 Docker 를 우회한다.
+
+    reclaim_on_startup=True 면 기동 시 이전 프로세스가 남긴 고아 컨테이너를 회수한다
+    (Docker 가 없거나 실패해도 앱 기동은 막지 않는다).
+    """
     service = service or ChallengeService()
     challenges = DEFAULT_CHALLENGES if challenges is None else challenges
     by_name = {c.name: c for c in challenges}
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if reclaim_on_startup:
+            try:
+                removed = service.reclaim_orphans()
+                if removed:
+                    _log.info("기동 시 고아 컨테이너 %d개 회수: %s", len(removed), removed)
+            except Exception as exc:  # noqa: BLE001 — docker 부재/실패는 치명적이지 않다
+                _log.warning("기동 시 고아 회수 실패(무시하고 계속): %s", exc)
+        yield
 
     app = FastAPI(
         title="Ulsaner Platform",
         description="매번 새로 생성되는 웹 취약점 훈련 엔진 — 플랫폼(검증 서비스 · 웹 UI)",
         version="0.2.0",
+        lifespan=lifespan,
     )
 
     @app.get("/", response_class=HTMLResponse)
@@ -130,6 +155,13 @@ def create_app(
         spec = by_name.get(req.name)
         if spec is None:
             raise HTTPException(status_code=404, detail=f"알 수 없는 챌린지: {req.name}")
+        # 만원이면 비싼 번들 생성 전에 먼저 거절(만료분은 회수 후 재판정).
+        service.sweep_expired()
+        if service.at_capacity():
+            raise HTTPException(
+                status_code=503,
+                detail="동시 인스턴스 상한에 도달했습니다. 잠시 후 다시 시도하세요.",
+            )
         # 엔진 소스는 여기서 실번들을 생성(Docker 빌드·자가검증 포함, 수십 초 가능).
         try:
             bundle_dir, cleanup = spec.provision()
@@ -138,7 +170,16 @@ def create_app(
                 status_code=503,
                 detail="인스턴스 생성에 실패했습니다 (Docker 데몬·엔진 상태를 확인하세요).",
             ) from exc
-        return service.spin_up(bundle_dir, cleanup=cleanup)
+        try:
+            return service.spin_up(bundle_dir, cleanup=cleanup)
+        except CapacityError as exc:  # 경합으로 그 사이 꽉 찬 경우
+            cleanup()
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except OrchestratorError as exc:  # 배포/헬스체크 실패(번들은 spin_up 이 이미 정리)
+            raise HTTPException(
+                status_code=503,
+                detail="인스턴스 배포에 실패했습니다 (컨테이너가 뜨지 않음).",
+            ) from exc
 
     @app.post("/challenges/{challenge_id}/submit")
     def submit(challenge_id: str, req: SubmitRequest) -> dict:
@@ -185,4 +226,4 @@ def create_app(
 
 
 # uvicorn 진입점: `uvicorn ulsaner_platform.app:app`
-app = create_app()
+app = create_app(reclaim_on_startup=True)

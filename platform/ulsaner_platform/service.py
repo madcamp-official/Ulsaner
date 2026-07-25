@@ -13,15 +13,21 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 
-from orchestrator.runner import Instance, deploy_bundle, stop_container
+from orchestrator.runner import Instance, deploy_bundle, reclaim_orphans, stop_container
 from ulsaner_platform.manifest import Manifest, load_bundle_manifest
 
 DEFAULT_TTL_SECONDS = 30 * 60  # 30분
+DEFAULT_MAX_ACTIVE = 8  # 동시 인스턴스 상한(로컬 데모 자원 보호). None 이면 무제한.
+
+# 실배포는 앱이 실제로 리슨할 때까지 기다린 뒤 URL 을 준다(헬스체크).
+_DEFAULT_DEPLOY = partial(deploy_bundle, wait_ready=True)
 
 DeployFn = Callable[..., Instance]
 StopFn = Callable[[str], None]
+ReclaimFn = Callable[[set[str]], list[str]]
 Clock = Callable[[], float]
 
 
@@ -31,6 +37,10 @@ class ChallengeError(RuntimeError):
 
 class ChallengeNotFound(ChallengeError):
     """존재하지 않거나 이미 정리된 챌린지에 접근."""
+
+
+class CapacityError(ChallengeError):
+    """동시 인스턴스 상한에 도달 — 더 스핀업할 수 없다."""
 
 
 @dataclass
@@ -63,15 +73,19 @@ class ChallengeService:
     def __init__(
         self,
         *,
-        deploy_fn: DeployFn = deploy_bundle,
+        deploy_fn: DeployFn = _DEFAULT_DEPLOY,
         stop_fn: StopFn = stop_container,
+        reclaim_fn: ReclaimFn = reclaim_orphans,
         clock: Clock = time.time,
         ttl_seconds: float = DEFAULT_TTL_SECONDS,
+        max_active: int | None = DEFAULT_MAX_ACTIVE,
     ):
         self._deploy = deploy_fn
         self._stop = stop_fn
+        self._reclaim = reclaim_fn
         self._clock = clock
         self._ttl = ttl_seconds
+        self._max_active = max_active
         self._active: dict[str, ActiveChallenge] = {}
         self._log: list[Attempt] = []  # teardown 후에도 남는 통계용 로그
 
@@ -92,6 +106,13 @@ class ChallengeService:
 
         cleanup 은 teardown 시 호출된다(엔진 번들의 임시 디렉토리 삭제 등).
         """
+        # 만료분을 먼저 회수한 뒤에도 자리가 없으면 거절(자원 보호).
+        self.sweep_expired()
+        if self.at_capacity():
+            raise CapacityError(
+                f"동시 인스턴스 상한({self._max_active})에 도달했습니다. 잠시 후 다시 시도하세요."
+            )
+
         bundle_dir = Path(bundle_dir)
         manifest = load_bundle_manifest(bundle_dir)
         build_context = bundle_dir if (bundle_dir / "Dockerfile").exists() else bundle_dir / "app"
@@ -160,6 +181,18 @@ class ChallengeService:
         for cid in expired:
             self.teardown(cid)
         return expired
+
+    def at_capacity(self) -> bool:
+        """동시 인스턴스 상한에 도달했는지(순수 조회, sweep 하지 않음)."""
+        return self._max_active is not None and len(self._active) >= self._max_active
+
+    def reclaim_orphans(self) -> list[str]:
+        """추적 중이 아닌 고아 컨테이너를 회수한다(서버 재시작·크래시 후 정리).
+
+        현재 추적 중인 컨테이너는 보존 집합으로 넘겨 살아 있는 세션은 건드리지 않는다.
+        """
+        keep = {a.instance.container_id for a in self._active.values()}
+        return self._reclaim(keep)
 
     # --- 조회 -----------------------------------------------------------
     def attempt_log(self) -> list[Attempt]:
