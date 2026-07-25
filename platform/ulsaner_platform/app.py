@@ -13,20 +13,53 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from ulsaner_platform.manifest import load_bundle_manifest
 from ulsaner_platform.service import ChallengeNotFound, ChallengeService
+from ulsaner_platform.sources import Provision, engine_source, fixture_source
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
-DEFAULT_BUNDLES: dict[str, Path] = {
-    "easy-idor-01": _REPO_ROOT / "platform" / "fixtures" / "easy-idor-01",
-}
+_FIXTURE_DIR = _REPO_ROOT / "platform" / "fixtures" / "easy-idor-01"
+
+
+@dataclass(frozen=True)
+class Challenge:
+    """카탈로그에 노출할 챌린지 스펙 + 스핀업 시 번들을 얻는 소스.
+
+    메타데이터(vuln_type/tier/task_prompt)는 배포 없이 카드에 보여줄 값이라 스펙에 직접 둔다
+    (엔진 소스는 배포 전엔 정적 manifest 가 없으므로 manifest 에서 읽을 수 없다).
+    """
+
+    name: str
+    vuln_type: str
+    tier: str
+    task_prompt: str
+    provision: Provision
+
+
+# fixture(고정 flag) = 테스트·데모 기준, live(엔진 생성) = 인스턴스마다 랜덤 flag(thesis 실현).
+DEFAULT_CHALLENGES: list[Challenge] = [
+    Challenge(
+        name="easy-idor-01",
+        vuln_type="idor",
+        tier="easy",
+        task_prompt="당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요. (고정 fixture)",
+        provision=fixture_source(_FIXTURE_DIR),
+    ),
+    Challenge(
+        name="easy-idor-live",
+        vuln_type="idor",
+        tier="easy",
+        task_prompt="당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요. (엔진 생성 · 매 인스턴스 랜덤 flag)",
+        provision=engine_source("idor", "easy"),
+    ),
+]
 
 
 class SpinUpRequest(BaseModel):
@@ -40,11 +73,12 @@ class SubmitRequest(BaseModel):
 def create_app(
     *,
     service: ChallengeService | None = None,
-    bundles: dict[str, Path] | None = None,
+    challenges: list[Challenge] | None = None,
 ) -> FastAPI:
-    """앱을 조립한다. service/bundles 를 주입할 수 있어 테스트에서 Docker 를 우회한다."""
+    """앱을 조립한다. service/challenges 를 주입할 수 있어 테스트에서 Docker 를 우회한다."""
     service = service or ChallengeService()
-    bundles = DEFAULT_BUNDLES if bundles is None else bundles
+    challenges = DEFAULT_CHALLENGES if challenges is None else challenges
+    by_name = {c.name: c for c in challenges}
 
     app = FastAPI(
         title="Ulsaner Platform",
@@ -78,26 +112,33 @@ def create_app(
 
     @app.get("/challenges")
     def list_challenges() -> dict:
-        # 카드용 메타데이터를 배포 없이 manifest 에서 읽어 제공(flag/_internal 제외).
-        available = []
-        for name, bundle_dir in bundles.items():
-            manifest = load_bundle_manifest(bundle_dir)
-            available.append(
+        # 카드용 메타데이터를 배포 없이 스펙에서 제공(flag/_internal 은 애초에 없음).
+        return {
+            "available": [
                 {
-                    "name": name,
-                    "vuln_type": manifest.vuln_type,
-                    "tier": manifest.tier,
-                    "task_prompt": manifest.task_prompt,
+                    "name": c.name,
+                    "vuln_type": c.vuln_type,
+                    "tier": c.tier,
+                    "task_prompt": c.task_prompt,
                 }
-            )
-        return {"available": available}
+                for c in challenges
+            ]
+        }
 
     @app.post("/challenges")
     def spin_up(req: SpinUpRequest) -> dict:
-        bundle_dir = bundles.get(req.name)
-        if bundle_dir is None:
+        spec = by_name.get(req.name)
+        if spec is None:
             raise HTTPException(status_code=404, detail=f"알 수 없는 챌린지: {req.name}")
-        return service.spin_up(bundle_dir)
+        # 엔진 소스는 여기서 실번들을 생성(Docker 빌드·자가검증 포함, 수십 초 가능).
+        try:
+            bundle_dir, cleanup = spec.provision()
+        except Exception as exc:  # 생성 실패(Docker 다운·엔진 오류 등)
+            raise HTTPException(
+                status_code=503,
+                detail="인스턴스 생성에 실패했습니다 (Docker 데몬·엔진 상태를 확인하세요).",
+            ) from exc
+        return service.spin_up(bundle_dir, cleanup=cleanup)
 
     @app.post("/challenges/{challenge_id}/submit")
     def submit(challenge_id: str, req: SubmitRequest) -> dict:

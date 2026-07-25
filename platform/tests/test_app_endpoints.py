@@ -6,8 +6,9 @@ create_app 에 가짜 배포기를 주입한 ChallengeService 를 넣어 Docker 
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from ulsaner_platform.app import create_app
+from ulsaner_platform.app import Challenge, create_app
 from ulsaner_platform.service import ChallengeService
+from ulsaner_platform.sources import fixture_source
 
 from orchestrator.runner import Instance
 
@@ -24,7 +25,16 @@ def make_client() -> TestClient:
         stop_fn=lambda container_id: None,
         clock=lambda: 1000.0,
     )
-    return TestClient(create_app(service=svc, bundles={"easy-idor-01": FIXTURE}))
+    challenges = [
+        Challenge(
+            name="easy-idor-01",
+            vuln_type="idor",
+            tier="easy",
+            task_prompt="다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요.",
+            provision=fixture_source(FIXTURE),
+        )
+    ]
+    return TestClient(create_app(service=svc, challenges=challenges))
 
 
 def test_health_still_ok():
