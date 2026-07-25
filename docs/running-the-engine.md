@@ -96,7 +96,17 @@ flag가 그대로 응답에 담겨 나오면 성공.
 docker stop demo-run && docker rm demo-run
 ```
 
-## 5. 자주 겪는 문제
+## 5. 플랫폼과 통합 실행 (실제 학생 플로우)
+
+엔진↔플랫폼이 연결돼 있어서, 플랫폼을 띄우면 매 스핀업마다 엔진이 새 인스턴스를 생성한다.
+
+```bash
+PYTHONPATH=platform .venv/bin/uvicorn ulsaner_platform.app:app --reload
+```
+
+브라우저로 http://localhost:8000 접속 → 챌린지 목록에 `easy-idor-01`(고정 fixture)뿐 아니라 **`easy-idor-live`, `hard-idor-live`**(매번 새로 생성)도 뜬다. 스핀업하면 `.ulsaner-live-bundles/`에 그 인스턴스의 소스가 생성된다 — `seed_data.json`에서 토큰을 확인해 공격하면 된다(위 4장 방식과 동일).
+
+## 6. 자주 겪는 문제
 
 - **`docker-credential-desktop: executable file not found`**: Docker Desktop의 자격증명 헬퍼가 PATH에 없어서 나는 에러. `~/.docker/config.json`을 손대지 말고, 대신 `ln -sf "/Applications/Docker.app/Contents/Resources/bin/docker-credential-desktop" ~/.local/bin/docker-credential-desktop`로 심볼릭 링크만 걸어주면 해결된다.
 - **`ModuleNotFoundError: No module named 'fastapi'`**: `engine/requirements-dev.txt`에 fastapi/uvicorn이 포함돼 있는지 확인 (누락되면 fresh venv에서 이 에러가 남).
