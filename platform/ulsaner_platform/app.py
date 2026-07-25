@@ -13,7 +13,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Union
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -24,8 +26,50 @@ from ulsaner_platform.service import ChallengeNotFound, ChallengeService
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
-DEFAULT_BUNDLES: dict[str, Path] = {
+_LIVE_WORKDIR = _REPO_ROOT / ".ulsaner-live-bundles"
+
+
+@dataclass(frozen=True)
+class LiveChallenge:
+    """엔진이 스핀업 시점마다 새로 생성하는 챌린지 — 고정 fixture와 달리 매번 유니크하다."""
+
+    vuln_type: str
+    tier: str
+    task_prompt: str
+    factory: Callable[[], Path]
+
+
+BundleSource = Union[Path, LiveChallenge]
+
+
+def _generate_easy_idor() -> Path:
+    from engine.live_bundle import generate_live_bundle
+    from engine.slots.easy_idor import build_easy_idor_slot
+
+    return generate_live_bundle(build_easy_idor_slot, _LIVE_WORKDIR)
+
+
+def _generate_hard_idor() -> Path:
+    from engine.live_bundle import generate_live_bundle
+    from engine.slots.hard_idor import build_hard_idor_slot
+
+    return generate_live_bundle(build_hard_idor_slot, _LIVE_WORKDIR)
+
+
+DEFAULT_BUNDLES: dict[str, BundleSource] = {
     "easy-idor-01": _REPO_ROOT / "platform" / "fixtures" / "easy-idor-01",
+    "easy-idor-live": LiveChallenge(
+        vuln_type="idor",
+        tier="easy",
+        task_prompt="다른 사용자의 비공개 노트를 읽어 flag를 찾아라",
+        factory=_generate_easy_idor,
+    ),
+    "hard-idor-live": LiveChallenge(
+        vuln_type="idor",
+        tier="hard",
+        task_prompt="다른 사용자의 비공개 노트를 읽어 flag를 찾아라",
+        factory=_generate_hard_idor,
+    ),
 }
 
 
@@ -40,7 +84,7 @@ class SubmitRequest(BaseModel):
 def create_app(
     *,
     service: ChallengeService | None = None,
-    bundles: dict[str, Path] | None = None,
+    bundles: dict[str, BundleSource] | None = None,
 ) -> FastAPI:
     """앱을 조립한다. service/bundles 를 주입할 수 있어 테스트에서 Docker 를 우회한다."""
     service = service or ChallengeService()
@@ -73,25 +117,39 @@ def create_app(
 
     @app.get("/challenges")
     def list_challenges() -> dict:
-        # 카드용 메타데이터를 배포 없이 manifest 에서 읽어 제공(flag/_internal 제외).
+        # 카드용 메타데이터. 고정 fixture는 배포 없이 manifest에서 읽고,
+        # LiveChallenge는 스핀업 전이라 실제 manifest가 없으므로 고정 메타데이터를 쓴다
+        # (task_prompt는 매 생성마다 동일하게 넘기므로 이 메타데이터와 항상 일치한다).
         available = []
-        for name, bundle_dir in bundles.items():
-            manifest = load_bundle_manifest(bundle_dir)
-            available.append(
-                {
-                    "name": name,
-                    "vuln_type": manifest.vuln_type,
-                    "tier": manifest.tier,
-                    "task_prompt": manifest.task_prompt,
-                }
-            )
+        for name, source in bundles.items():
+            if isinstance(source, LiveChallenge):
+                available.append(
+                    {
+                        "name": name,
+                        "vuln_type": source.vuln_type,
+                        "tier": source.tier,
+                        "task_prompt": source.task_prompt,
+                    }
+                )
+            else:
+                manifest = load_bundle_manifest(source)
+                available.append(
+                    {
+                        "name": name,
+                        "vuln_type": manifest.vuln_type,
+                        "tier": manifest.tier,
+                        "task_prompt": manifest.task_prompt,
+                    }
+                )
         return {"available": available}
 
     @app.post("/challenges")
     def spin_up(req: SpinUpRequest) -> dict:
-        bundle_dir = bundles.get(req.name)
-        if bundle_dir is None:
+        source = bundles.get(req.name)
+        if source is None:
             raise HTTPException(status_code=404, detail=f"알 수 없는 챌린지: {req.name}")
+        # LiveChallenge는 요청 시점에 엔진으로 새 인스턴스를 생성한다 — 매번 유니크한 번들.
+        bundle_dir = source.factory() if isinstance(source, LiveChallenge) else source
         return service.spin_up(bundle_dir)
 
     @app.post("/challenges/{challenge_id}/submit")
