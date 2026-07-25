@@ -44,6 +44,10 @@ class Attempt:
     at: float
 
 
+def _noop() -> None:
+    """기본 정리 콜백 — fixture 처럼 정리할 임시 디렉토리가 없을 때."""
+
+
 @dataclass
 class ActiveChallenge:
     id: str
@@ -51,6 +55,8 @@ class ActiveChallenge:
     instance: Instance
     created_at: float
     attempts: list[Attempt] = field(default_factory=list)
+    # 엔진 생성 번들처럼 스핀업마다 임시 디렉토리를 쓰는 경우, teardown 시 호출해 정리한다.
+    cleanup: Callable[[], None] = _noop
 
 
 class ChallengeService:
@@ -70,20 +76,41 @@ class ChallengeService:
         self._log: list[Attempt] = []  # teardown 후에도 남는 통계용 로그
 
     # --- 스핀업 ---------------------------------------------------------
-    def spin_up(self, bundle_dir: str | Path) -> dict:
-        """번들을 배포하고 학생용 뷰(challenge_id + URL + 과제)를 돌려준다."""
+    def spin_up(
+        self,
+        bundle_dir: str | Path,
+        *,
+        cleanup: Callable[[], None] = _noop,
+    ) -> dict:
+        """번들을 배포하고 학생용 뷰(challenge_id + URL + 과제)를 돌려준다.
+
+        manifest 는 항상 ``bundle_dir/manifest.json`` 에 있다. 빌드 컨텍스트(Dockerfile 위치)는
+        번들 레이아웃에 따라 다르다:
+          - fixture: 루트에 Dockerfile → 컨텍스트 = bundle_dir
+          - 엔진 생성 번들: app/ 안에 Dockerfile → 컨텍스트 = bundle_dir/app
+        엔진 번들의 exploits/(평문 flag)는 app/ 밖에 있어 빌드 컨텍스트에 포함되지 않는다.
+
+        cleanup 은 teardown 시 호출된다(엔진 번들의 임시 디렉토리 삭제 등).
+        """
+        bundle_dir = Path(bundle_dir)
         manifest = load_bundle_manifest(bundle_dir)
+        build_context = bundle_dir if (bundle_dir / "Dockerfile").exists() else bundle_dir / "app"
         challenge_id = uuid.uuid4().hex
-        instance = self._deploy(
-            bundle_dir,
-            tag=f"ulsaner-{challenge_id[:12]}",
-            container_port=manifest.port,
-        )
+        try:
+            instance = self._deploy(
+                build_context,
+                tag=f"ulsaner-{challenge_id[:12]}",
+                container_port=manifest.port,
+            )
+        except Exception:
+            cleanup()  # 배포 실패 시에도 임시 번들은 정리
+            raise
         self._active[challenge_id] = ActiveChallenge(
             id=challenge_id,
             manifest=manifest,
             instance=instance,
             created_at=self._clock(),
+            cleanup=cleanup,
         )
         return self._student_view(challenge_id)
 
@@ -122,6 +149,7 @@ class ChallengeService:
         active = self._active.pop(challenge_id, None)
         if active is not None:
             self._stop(active.instance.container_id)
+            active.cleanup()  # 임시 번들 디렉토리 등 정리(엔진 생성 번들)
 
     def sweep_expired(self) -> list[str]:
         """TTL 이 지난 인스턴스를 모두 teardown 하고 그 id 목록을 반환한다."""

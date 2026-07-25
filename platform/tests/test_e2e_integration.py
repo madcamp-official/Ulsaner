@@ -13,8 +13,9 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from ulsaner_platform.app import create_app
+from ulsaner_platform.app import Challenge, create_app
 from ulsaner_platform.service import ChallengeService
+from ulsaner_platform.sources import fixture_source
 
 pytestmark = pytest.mark.integration
 
@@ -35,7 +36,16 @@ def _wait_until_up(url: str, timeout: float = 45.0) -> None:
 
 def test_full_platform_loop_spinup_exploit_submit():
     service = ChallengeService()  # 실제 배포/정리
-    client = TestClient(create_app(service=service, bundles={"easy-idor-01": FIXTURE}))
+    challenges = [
+        Challenge(
+            name="easy-idor-01",
+            vuln_type="idor",
+            tier="easy",
+            task_prompt="다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요.",
+            provision=fixture_source(FIXTURE),
+        )
+    ]
+    client = TestClient(create_app(service=service, challenges=challenges))
     try:
         # 1) 스핀업 → 학생용 뷰(URL + 과제)
         view = client.post("/challenges", json={"name": "easy-idor-01"}).json()
