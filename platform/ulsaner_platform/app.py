@@ -67,6 +67,11 @@ def create_app(
         # 대안 디자인 B(다크 콘솔) — 비교용.
         return (_STATIC_DIR / "index_claude.html").read_text(encoding="utf-8")
 
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dashboard() -> str:
+        # 통계 대시보드 — 시도/성공/정답률 + VibeCutter vs 사람.
+        return (_STATIC_DIR / "dashboard.html").read_text(encoding="utf-8")
+
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}
@@ -113,9 +118,26 @@ def create_app(
     @app.get("/stats")
     def stats() -> dict:
         log = service.attempt_log()
+        attempts = len(log)
+        solved = sum(1 for a in log if a.correct)
+
+        def agg(attr: str) -> dict:
+            out: dict[str, dict[str, int]] = {}
+            for a in log:
+                d = out.setdefault(getattr(a, attr), {"attempts": 0, "solved": 0})
+                d["attempts"] += 1
+                if a.correct:
+                    d["solved"] += 1
+            return out
+
         return {
-            "attempts": len(log),
-            "solved": sum(1 for a in log if a.correct),
+            "attempts": attempts,
+            "solved": solved,
+            "success_rate": round(solved / attempts, 4) if attempts else 0.0,
+            "by_tier": agg("tier"),
+            "by_vuln": agg("vuln_type"),
+            # VibeCutter 벤치마크(자동도구 성공률) 결과 자리 — 엔진 파트에서 실행 후 연동.
+            "vibecutter": None,
         }
 
     return app
