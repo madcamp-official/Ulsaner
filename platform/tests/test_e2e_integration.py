@@ -66,7 +66,9 @@ def test_full_platform_loop_spinup_exploit_submit():
         # 3) 제출 → 채점 통과
         result = client.post(f"/challenges/{challenge_id}/submit", json={"flag": flag})
         assert result.status_code == 200
-        assert result.json() == {"correct": True}
+        body = result.json()
+        assert body["correct"] is True
+        assert body["reveal"]  # 정답 시 취약점 해설 동반
 
         # 4) 정답이면 인스턴스가 teardown 되어 재제출은 404
         assert client.post(

@@ -39,6 +39,9 @@ __pycache__/
 build/
 dist/
 
-# 엔진이 생성하는 라이브 번들(flag·토큰 등 시크릿 포함, 절대 커밋 금지)
-.ulsaner-live-bundles/
+# 엔진 VibeCutter 벤치마크 실행 산출물(퍼-런) — 예시 파일만 커밋
+platform/data/vibecutter_result.json
 
+# 생성된 챌린지 번들(app/ + exploits/reference.json 에 평문 flag 포함) — 절대 커밋 금지
+.ulsaner-live-bundles/
+*/ulsaner-bundle-*/

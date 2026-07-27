@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -32,6 +33,9 @@ from ulsaner_platform.sources import Provision, engine_source, fixture_source
 
 _log = logging.getLogger("ulsaner.platform")
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# 엔진 VibeCutter 벤치마크 결과가 떨어지는 자리(서윤이 run_benchmark 결과 JSON 을 여기 저장).
+# 파일이 있으면 /stats 가 자동도구 성공률을 읽어 대시보드에 채운다. 없으면 '벤치마크 대기'.
+_DEFAULT_VIBECUTTER_PATH = _REPO_ROOT / "platform" / "data" / "vibecutter_result.json"
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _FIXTURE_DIR = _REPO_ROOT / "platform" / "fixtures" / "easy-idor-01"
 
@@ -77,6 +81,29 @@ DEFAULT_CHALLENGES: list[Challenge] = [
 ]
 
 
+def _load_vibecutter(path: Path | None) -> tuple[float | None, dict | None]:
+    """벤치마크 결과 파일을 읽어 (성공률, 상세)를 돌려준다.
+
+    run_benchmark() 형식({"seeds", "results", "success_rate"})을 그대로 소비한다.
+    파일이 없거나 깨졌으면 (None, None) — /stats 의 기존 '벤치마크 대기' 동작을 보존한다.
+    """
+    if path is None or not path.exists():
+        return None, None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None, None
+    rate = data.get("success_rate")
+    if rate is None:
+        return None, None
+    results = data.get("results") or []
+    detail = {
+        "instances": len(results),
+        "solved": sum(1 for r in results if r),
+    }
+    return float(rate), detail
+
+
 class SpinUpRequest(BaseModel):
     name: str
 
@@ -90,11 +117,14 @@ def create_app(
     service: ChallengeService | None = None,
     challenges: list[Challenge] | None = None,
     reclaim_on_startup: bool = False,
+    vibecutter_result_path: Path | None = _DEFAULT_VIBECUTTER_PATH,
 ) -> FastAPI:
     """앱을 조립한다. service/challenges 를 주입할 수 있어 테스트에서 Docker 를 우회한다.
 
     reclaim_on_startup=True 면 기동 시 이전 프로세스가 남긴 고아 컨테이너를 회수한다
     (Docker 가 없거나 실패해도 앱 기동은 막지 않는다).
+    vibecutter_result_path 가 가리키는 파일이 있으면 /stats 가 자동도구 성공률을 읽는다
+    (None 이면 VibeCutter 지표 비활성 — 항상 '벤치마크 대기').
     """
     service = service or ChallengeService()
     challenges = DEFAULT_CHALLENGES if challenges is None else challenges
@@ -178,7 +208,7 @@ def create_app(
                 detail="인스턴스 생성에 실패했습니다 (Docker 데몬·엔진 상태를 확인하세요).",
             ) from exc
         try:
-            return service.spin_up(bundle_dir, cleanup=cleanup)
+            return service.spin_up(bundle_dir, name=spec.name, cleanup=cleanup)
         except CapacityError as exc:  # 경합으로 그 사이 꽉 찬 경우
             cleanup()
             raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -191,12 +221,15 @@ def create_app(
     @app.post("/challenges/{challenge_id}/submit")
     def submit(challenge_id: str, req: SubmitRequest) -> dict:
         try:
-            correct = service.submit_flag(challenge_id, req.flag)
+            result = service.submit_flag(challenge_id, req.flag)
         except ChallengeNotFound as exc:
             raise HTTPException(
                 status_code=404, detail="챌린지를 찾을 수 없거나 이미 해결됨"
             ) from exc
-        return {"correct": correct}
+        resp: dict = {"correct": result.correct}
+        if result.correct:  # 정답일 때만 취약점 해설을 함께 준다(리빌).
+            resp["reveal"] = result.reveal
+        return resp
 
     @app.delete("/challenges/{challenge_id}")
     def teardown(challenge_id: str) -> dict:
@@ -219,14 +252,18 @@ def create_app(
                     d["solved"] += 1
             return out
 
+        # VibeCutter 벤치마크(자동도구 성공률) — 결과 파일이 있으면 읽어 채운다.
+        vibecutter, vibecutter_detail = _load_vibecutter(vibecutter_result_path)
+
         return {
             "attempts": attempts,
             "solved": solved,
             "success_rate": round(solved / attempts, 4) if attempts else 0.0,
             "by_tier": agg("tier"),
             "by_vuln": agg("vuln_type"),
-            # VibeCutter 벤치마크(자동도구 성공률) 결과 자리 — 엔진 파트에서 실행 후 연동.
-            "vibecutter": None,
+            "by_challenge": agg("challenge_name"),  # 챌린지 슬롯별 시도·성공 횟수
+            "vibecutter": vibecutter,
+            "vibecutter_detail": vibecutter_detail,
         }
 
     return app
