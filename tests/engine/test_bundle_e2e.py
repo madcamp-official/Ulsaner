@@ -35,6 +35,11 @@ def test_generate_easy_idor_bundle_e2e(tmp_path):
     routes_code = (result / "app" / "routes" / "notes.py").read_text()
     assert "note = get_note_by_id(note_id)" in routes_code
 
+    # An idor bundle must leave the sqli surface (db.py's search) untouched and safe
+    db_code = (result / "app" / "db.py").read_text()
+    assert "LIKE ?" in db_code
+    assert "LIKE '%{q}%'" not in db_code
+
 
 @pytest.mark.integration
 def test_generate_bundle_raises_after_max_attempts_when_verification_always_fails(tmp_path):
