@@ -96,18 +96,37 @@ VC_ROOT=/path/to/VibeCutter VCVENV_PY=/path/to/target/.vcvenv/bin/python \
     /tmp/bench_work platform/data/vibecutter_result.json
 ```
 
-### 결과 (8 인스턴스: easy×4, hard×4 — 2026-07-27)
+지표는 클래스 독립으로 4개를 기록한다:
 
-| tier | 정적 탐지 (stock) | 정적 탐지 (fixed) | 실제 취약(verifier) | VibeCutter solved (fixed) |
+- `vc_detected_stock/fixed` — VibeCutter 정적 스캐너가 후보를 만들었는가(IDOR=`find_idor_suspects`,
+  SQLi=injection prefilter). `fixed`는 위 prefilter 패치 적용본.
+- `vc_verified` — VibeCutter 자체 verifier가 재현·확정했는가.
+- `exploitable` — Ulsaner 레퍼런스 익스플로잇(독립 ground truth)이 실제로 flag를 뽑았는가.
+- `solved`(=results) — `vc_detected_fixed AND vc_verified` (VibeCutter 파이프라인이 실제로 잡는 조건).
+
+### 결과 (15 인스턴스: easy-idor×5, hard-idor×5, easy-sqli×5 — 2026-07-27)
+
+| 클래스 | vc_detected (stock→fixed) | vc_verified | exploitable | solved (fixed) |
 |---|---|---|---|---|
-| easy-idor ×4 | ✗ | ✓ | ✓ | ✓ (4/4) |
-| hard-idor ×4 | ✗ | ✗ | ✓ | ✗ (0/4) |
+| easy-idor ×5 | ✗ → ✓ | ✓ | ✓ | **5/5** |
+| hard-idor ×5 | ✗ → ✗ | ✓ | ✓ | **0/5** |
+| easy-sqli ×5 | ✗ → ✗ | ✗ | ✓ | **0/5** |
 
-- **stock VibeCutter: 0/8 (0%)** — prefilter 맹점으로 easy조차 미탐.
-- **fixed VibeCutter: 4/8 (50%)** — easy는 다 잡지만 hard는 전부 놓침.
+- **stock VibeCutter: 0/15 (0%)**, **fixed VibeCutter: 5/15 (33.3%)**.
+- **15건 전부 `exploitable:true`** — 미탐은 취약점 부재가 아니라 자동도구 한계다.
 
-`hard_idor` 슬롯은 소유권 검사를 **제거**하는 게 아니라 `note.owner_id != user.id`를
-`note.workspace_id != user.workspace_id`로 **바꾼다**. 두 유저가 같은 workspace라 교차 조회가
-통과되는 실제 IDOR(verifier가 8건 전부 재현=`exploitable:true`)인데, 코드가 겉보기엔 `user`로
-스코프된 듯 보여 정적 prefilter가 놓친다. 즉 **hard 미탐은 취약점이 없어서가 아니라 자동 도구가
-위장을 못 알아봐서** — 사람은 잡고 자동도구는 놓치는 지점의 실증이다.
+세 가지 미탐 메커니즘:
+
+1. **easy-idor** — `owner_id != user.id` 검사를 **삭제**. prefilter 패치 후 `user`를 받되 안 쓰는
+   패턴으로 잡힌다(stock은 인증≠인가 혼동으로 미탐). → fixed가 유일하게 푸는 클래스.
+2. **hard-idor** — 검사를 삭제하지 않고 `note.owner_id != user.id` → `note.workspace_id !=
+   user.workspace_id`로 **바꾼다**. 같은 workspace라 교차 조회가 통과되는 실제 IDOR인데, 코드가
+   겉보기엔 `user`로 스코프된 듯 보여 stock·fixed 둘 다 놓친다.
+3. **easy-sqli** — `db.py:search_notes_by_title`의 파라미터 쿼리를 f-string 연결로 바꿔
+   `GET /notes/search?q=`에 SQL 주입. SQL sink이 라우트 핸들러가 아니라 **서비스 계층 함수** 안이라
+   injection prefilter가 라우트/파라미터를 못 붙여 후보 0개(미탐). verifier를 직접 물려도 seed
+   데이터가 노트 2건뿐이라 boolean 차등이 노이즈 임계 아래(`vc_verified:false`). 그러나 UNION
+   페이로드(`' UNION SELECT id, body FROM notes ... -- `)로 비공개 note body(flag)가 그대로 유출됨.
+
+→ 사람은 잡고 자동도구는 놓치는 지점의 실증. 특히 hard-idor·easy-sqli는 prefilter 한 줄 수정으로는
+안 풀리는, 스캐너 아키텍처(위장 인가 / 서비스-계층 sink) 차원의 한계다.
