@@ -17,15 +17,12 @@
 
 from __future__ import annotations
 
+import importlib
 import secrets
 import shutil
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-
-from engine.bundle import generate_bundle
-from engine.slots.easy_idor import build_easy_idor_slot
-from engine.slots.hard_idor import build_hard_idor_slot
 
 # provision() -> (bundle_dir, cleanup)
 Provision = Callable[[], tuple[Path, Callable[[], None]]]
@@ -35,15 +32,19 @@ def _noop() -> None:
     """fixture 처럼 정리할 임시 디렉토리가 없을 때의 기본 정리 콜백."""
 
 
-# (vuln_type, tier) -> (slot_builder, task_prompt, solution_summary)
-_SLOTS: dict[tuple[str, str], tuple[Callable, str, str]] = {
+# (vuln_type, tier) -> (슬롯 빌더가 있는 모듈, 빌더 함수명, task_prompt, solution_summary).
+# 엔진(libcst 등 무거운 AST 툴체인)은 여기서 임포트하지 않고, 실제로 실번들을 생성할 때만
+# 지연 임포트한다 — 플랫폼(검증 서비스·/stats·fixture 스핀업)이 엔진 임포트에 묶이지 않도록.
+_SLOTS: dict[tuple[str, str], tuple[str, str, str, str]] = {
     ("idor", "easy"): (
-        build_easy_idor_slot,
+        "engine.slots.easy_idor",
+        "build_easy_idor_slot",
         "당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
         "노트 조회에서 소유권(owner) 검증이 빠져 있어 남의 비공개 노트를 읽을 수 있다(IDOR).",
     ),
     ("idor", "hard"): (
-        build_hard_idor_slot,
+        "engine.slots.hard_idor",
+        "build_hard_idor_slot",
         "당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
         "소유권 비교 로직이 변형돼 정적분석으로는 잘 안 잡히는 IDOR(하드 티어).",
     ),
@@ -69,9 +70,14 @@ def engine_source(vuln_type: str, tier: str) -> Provision:
     """
     if (vuln_type, tier) not in _SLOTS:
         raise KeyError(f"지원하지 않는 챌린지 조합: {vuln_type}/{tier}")
-    slot_builder, task_prompt, solution_summary = _SLOTS[(vuln_type, tier)]
+    module_path, builder_attr, task_prompt, solution_summary = _SLOTS[(vuln_type, tier)]
 
     def provision() -> tuple[Path, Callable[[], None]]:
+        # 엔진은 실제 생성 시점에만 임포트(무거운 libcst 등을 플랫폼 임포트 경로에서 분리).
+        from engine.bundle import generate_bundle
+
+        slot_builder = getattr(importlib.import_module(module_path), builder_attr)
+
         tmp = Path(tempfile.mkdtemp(prefix="ulsaner-bundle-"))
 
         def cleanup() -> None:

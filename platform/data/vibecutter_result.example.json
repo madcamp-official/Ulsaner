@@ -1,0 +1,6 @@
+{
+  "_comment": "엔진 run_benchmark() 결과 형식. 서윤이 벤치마크를 돌려 이 형식으로 platform/data/vibecutter_result.json 에 저장하면, /stats 가 읽어 대시보드의 'VibeCutter vs 사람' 뷰를 채운다. results 는 인스턴스별 성공(true)/실패(false), success_rate = 성공 비율.",
+  "seeds": [101, 102, 103, 104, 105, 106, 107, 108],
+  "results": [false, false, true, false, false, false, false, false],
+  "success_rate": 0.125
+}
