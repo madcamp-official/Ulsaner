@@ -11,6 +11,11 @@ from .slots.base import Slot
 TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "notes_app"
 SCHEMA_PATH = pathlib.Path(__file__).parent.parent / "contract" / "manifest_schema.json"
 
+_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
+    "idor": exploit_gen.build_idor_exploit,
+    "sqli": exploit_gen.build_sqli_exploit,
+}
+
 
 class BundleGenerationError(Exception):
     pass
@@ -42,7 +47,8 @@ def generate_bundle(
             )
         params.write_seed_data(app_dir, seed_data)
 
-        exploit = exploit_gen.build_idor_exploit(seed_data, flag)
+        build_exploit = _EXPLOIT_BUILDERS[slot.vuln_type]
+        exploit = build_exploit(seed_data, flag)
         tag = f"ulsaner-bundle-{seed}-{attempt}"
 
         if verifier.verify_bundle(app_dir, exploit, tag):
