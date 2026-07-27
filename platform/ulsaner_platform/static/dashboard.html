@@ -4,128 +4,176 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Ulsaner — 대시보드</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<!-- 메인 UI(index_dc.html)와 동일한 Modernist 디자인 시스템 (claude.ai/design 핸드오프) -->
 <style>
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body { background: oklch(0.155 0.006 255); color: oklch(0.93 0.005 255); font-family: 'IBM Plex Sans', system-ui, sans-serif; }
-  a { color: oklch(0.8 0.13 155); text-decoration: none; }
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 22px 24px 80px; }
-  .mono { font-family: 'IBM Plex Mono', monospace; }
-  .muted { color: oklch(0.58 0.006 255); }
-  header { display: flex; align-items: center; justify-content: space-between; padding: 0 0 20px; border-bottom: 1px solid oklch(0.27 0.008 255); }
-  .brand { display: flex; align-items: baseline; gap: 14px; }
-  .dot { width: 11px; height: 11px; border-radius: 2px; background: oklch(0.8 0.13 155); box-shadow: 0 0 12px oklch(0.8 0.13 155 / 0.6); }
-  h1 { margin: 34px 0 6px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
-  .sub { margin: 0 0 26px; font-size: 14px; color: oklch(0.62 0.006 255); }
-  .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 30px; }
-  .stat { border: 1px solid oklch(0.27 0.008 255); border-radius: 14px; background: oklch(0.185 0.006 255); padding: 18px 20px; }
-  .stat .k { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: oklch(0.58 0.006 255); letter-spacing: 0.04em; text-transform: uppercase; }
-  .stat .v { font-family: 'IBM Plex Mono', monospace; font-size: 34px; font-weight: 600; line-height: 1.1; margin-top: 8px; }
-  .card { border: 1px solid oklch(0.27 0.008 255); border-radius: 14px; background: oklch(0.185 0.006 255); padding: 22px 24px; margin-bottom: 22px; }
-  .card > h2 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
-  .card > .desc { margin: 0 0 20px; font-size: 13px; color: oklch(0.58 0.006 255); line-height: 1.5; }
-  .cmp { display: flex; flex-direction: column; gap: 16px; }
-  .cmp .lbl { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
-  .bar { height: 12px; border-radius: 6px; background: oklch(0.145 0.006 255); overflow: hidden; }
-  .bar > span { display: block; height: 100%; border-radius: 6px; transition: width 0.5s ease; }
-  .fill-human { background: oklch(0.8 0.13 155); }
-  .fill-auto { background: oklch(0.72 0.15 25); }
-  .fill-pending { background: repeating-linear-gradient(45deg, oklch(0.3 0.008 255), oklch(0.3 0.008 255) 6px, oklch(0.24 0.006 255) 6px, oklch(0.24 0.006 255) 12px); }
-  table { width: 100%; border-collapse: collapse; font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
-  th { text-align: left; font-weight: 500; color: oklch(0.58 0.006 255); padding: 0 0 10px; border-bottom: 1px solid oklch(0.27 0.008 255); }
-  th.num, td.num { text-align: right; }
-  td { padding: 11px 0; border-bottom: 1px solid oklch(0.22 0.006 255); color: oklch(0.86 0.005 255); }
-  .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 5px; }
-  .empty { color: oklch(0.5 0.006 255); font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 8px 0; }
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap');
+:root {
+  --color-bg: #f3f2f2; --color-surface: #eae9e9; --color-text: #201e1d;
+  --color-accent: #b0483a; --color-accent-2: #b0483a;
+  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+  --color-accent-100: #fff2ef; --color-accent-700: #ae1800; --color-accent-800: #7c1405;
+  --font-heading: "Archivo", system-ui, sans-serif; --font-heading-weight: 800;
+  --font-body: "Archivo", system-ui, sans-serif;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px;
+  --radius-md: 0px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+body, h1, h2, h3, p, span, div, dt, dd { word-break: keep-all; overflow-wrap: break-word; }
+h1, h2, h3 { font-family: var(--font-heading); font-weight: var(--font-heading-weight); letter-spacing: -0.015em; margin: 0; }
+a { color: var(--color-accent-700); text-decoration: none; }
+a:hover { color: var(--color-accent); }
+::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+.num { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-variant-numeric: tabular-nums; letter-spacing: -0.04em; line-height: 1; }
+.eyebrow { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; }
+.sub { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+.muted { color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+.tag { display: inline-flex; align-items: center; font-family: var(--font-heading); font-weight: 600; font-size: 11px; letter-spacing: 0.02em; padding: 3px 10px; text-transform: uppercase; }
+.rule-b { border-bottom: 2px solid var(--color-text); }
+.rule-r { border-right: 2px solid var(--color-text); }
+/* 성공률 막대 (radius 0, 하드 엣지) */
+.track { height: 16px; background: var(--color-surface); border: 1px solid var(--color-divider); }
+.fill { height: 100%; width: 0; transition: width 0.6s cubic-bezier(0.2,0.7,0.2,1); }
+.fill-human { background: var(--color-text); }
+.fill-auto { background: var(--color-accent); }
+.track-pending { background: repeating-linear-gradient(45deg, var(--color-surface), var(--color-surface) 6px, color-mix(in srgb, var(--color-text) 12%, transparent) 6px, color-mix(in srgb, var(--color-text) 12%, transparent) 12px); }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-family: var(--font-heading); font-weight: 600; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 62%, transparent); padding: var(--space-3) 0; border-bottom: 1px solid var(--color-divider); }
+th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; }
+td { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-divider); font-size: 14px; }
+@media (max-width: 720px) {
+  .masthead { grid-template-columns: 1fr 1fr !important; }
+  .masthead > .title-cell { grid-column: 1 / -1; }
+}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div class="brand">
-      <div style="display:flex;align-items:center;gap:9px;"><div class="dot"></div><span class="mono" style="font-size:19px;font-weight:600;">ulsaner</span></div>
-      <span class="mono muted" style="font-size:12px;">취약점 주입 훈련 엔진</span>
+
+<!-- 네비 -->
+<div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-4) var(--space-8);" class="rule-b">
+  <span style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:20px;letter-spacing:-0.02em;">ULSANER</span>
+  <span class="sub muted">Vulnerability Injection Training Engine</span>
+  <a href="/" class="sub" style="margin-left:auto;">← 훈련장</a>
+  <span class="sub" style="color:var(--color-accent-700);">GET /stats</span>
+</div>
+
+<!-- 마스트헤드 + 요약 통계 -->
+<div class="masthead rule-b" style="display:grid;grid-template-columns:1fr 190px 190px 190px;">
+  <div class="title-cell rule-r" style="padding:var(--space-6) var(--space-8);display:flex;flex-direction:column;justify-content:flex-end;gap:var(--space-2);">
+    <div class="eyebrow" style="color:var(--color-accent);">flag 제출 기준 집계</div>
+    <h1 style="font-size:32px;line-height:1.15;letter-spacing:-0.025em;">대시보드</h1>
+  </div>
+  <div class="rule-r" style="padding:var(--space-6);display:flex;flex-direction:column;justify-content:flex-end;">
+    <div class="eyebrow muted">총 시도</div>
+    <div class="num" id="s-att" style="font-size:56px;">–</div>
+  </div>
+  <div class="rule-r" style="padding:var(--space-6);display:flex;flex-direction:column;justify-content:flex-end;">
+    <div class="eyebrow muted">성공</div>
+    <div class="num" id="s-sol" style="font-size:56px;color:var(--color-accent);">–</div>
+  </div>
+  <div style="padding:var(--space-6);display:flex;flex-direction:column;justify-content:flex-end;">
+    <div class="eyebrow muted">정답률</div>
+    <div class="num" id="s-rate" style="font-size:56px;">–</div>
+  </div>
+</div>
+
+<!-- VibeCutter vs 사람 (핵심 지표) -->
+<section class="rule-b" style="padding:var(--space-8);">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-2);">
+    <h2 style="font-size:15px;letter-spacing:0.16em;text-transform:uppercase;">VibeCutter vs 사람</h2>
+    <span class="sub muted">핵심 지표</span>
+  </div>
+  <p class="muted" style="margin:0 0 var(--space-8);font-size:13.5px;max-width:70ch;">매번 새로 생성돼 학습데이터에 없는 인스턴스에서, 자동 보안도구는 얼마나 풀고 사람은 얼마나 푸는가.</p>
+
+  <!-- 사람 -->
+  <div style="max-width:900px;margin-bottom:var(--space-8);">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-2);">
+      <span class="eyebrow" style="color:var(--color-text);">사람 · 이 플랫폼</span>
+      <span class="num" id="h-val" style="font-size:26px;">–</span>
     </div>
-    <a class="mono" href="/" style="font-size:13px;">← 훈련장</a>
-  </header>
-
-  <h1>대시보드</h1>
-  <p class="sub">flag 제출 시도로 집계한 통계. 자동 보안도구(VibeCutter)와 사람의 성공률을 나란히 본다.</p>
-
-  <div class="row3">
-    <div class="stat"><div class="k">총 시도</div><div class="v" id="s-att">–</div></div>
-    <div class="stat"><div class="k">성공</div><div class="v" id="s-sol" style="color:oklch(0.8 0.13 155);">–</div></div>
-    <div class="stat"><div class="k">정답률</div><div class="v" id="s-rate">–</div></div>
+    <div class="track"><div class="fill fill-human" id="h-fill"></div></div>
   </div>
 
-  <div class="card">
-    <h2>VibeCutter vs 사람</h2>
-    <p class="desc">핵심 지표 — 매번 새로 생성돼 학습데이터에 없는 인스턴스에서, 자동도구는 얼마나 풀고 사람은 얼마나 푸는가.</p>
-    <div class="cmp">
-      <div>
-        <div class="lbl"><span>사람 (이 플랫폼)</span><span id="h-rate" style="color:oklch(0.8 0.13 155);">–</span></div>
-        <div class="bar"><span class="fill-human" id="h-bar" style="width:0%;"></span></div>
-      </div>
-      <div>
-        <div class="lbl"><span>VibeCutter (자동도구)</span><span id="v-rate" class="muted">벤치마크 대기</span></div>
-        <div class="bar"><span class="fill-pending" id="v-bar" style="width:100%;"></span></div>
-        <p class="desc" id="v-note" style="margin:8px 0 0;">엔진 파트(D5~D6)에서 VibeCutter 벤치마크를 실행하면 이 자리에 자동도구 성공률이 채워진다.</p>
-      </div>
+  <!-- VibeCutter -->
+  <div style="max-width:900px;">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-2);">
+      <span class="eyebrow" style="color:var(--color-accent);">VibeCutter · 자동도구</span>
+      <span class="num" id="v-val" style="font-size:26px;color:var(--color-accent);">–</span>
     </div>
+    <div class="track track-pending" id="v-track"><div class="fill fill-auto" id="v-fill" style="display:none;"></div></div>
+    <p class="muted" id="v-note" style="margin:var(--space-3) 0 0;font-size:12.5px;max-width:70ch;">엔진 파트에서 VibeCutter 벤치마크를 실행하면 이 자리에 자동도구 성공률이 채워진다.</p>
   </div>
+</section>
 
-  <div class="card">
-    <h2>난이도·취약점별</h2>
-    <p class="desc">easy는 대조군, hard는 정적분석 저항 주력. 티어별 성공률 격차가 thesis의 관측 대상.</p>
+<!-- 난이도·취약점별 -->
+<section style="padding:var(--space-8);">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-2);">
+    <h2 style="font-size:15px;letter-spacing:0.16em;text-transform:uppercase;">난이도 · 취약점별</h2>
+    <span class="sub muted">티어 격차 = thesis 관측 대상</span>
+  </div>
+  <p class="muted" style="margin:0 0 var(--space-6);font-size:13.5px;max-width:70ch;">easy는 대조군, hard는 정적분석 저항 주력. 티어별 성공률 격차를 관측한다.</p>
+  <div style="max-width:900px;">
     <table>
-      <thead><tr><th>구분</th><th class="num">시도</th><th class="num">성공</th><th class="num">정답률</th></tr></thead>
+      <thead><tr><th>구분</th><th class="n">시도</th><th class="n">성공</th><th class="n">정답률</th></tr></thead>
       <tbody id="break"></tbody>
     </table>
   </div>
-</div>
+</section>
 
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
+const pad2 = (n) => String(n).padStart(2, "0");
 const pct = (r) => (r * 100).toFixed(r ? 1 : 0) + "%";
 const TYPE = { idor: "IDOR", sqli: "SQLi" };
 
 async function load() {
-  let d; try { d = await (await fetch("/stats")).json(); } catch (e) { return; }
-  $("s-att").textContent = d.attempts;
-  $("s-sol").textContent = d.solved;
+  let d;
+  try { d = await (await fetch("/stats")).json(); } catch (e) { return; }
+
+  $("s-att").textContent = pad2(d.attempts);
+  $("s-sol").textContent = pad2(d.solved);
   $("s-rate").textContent = pct(d.success_rate);
 
-  $("h-rate").textContent = d.attempts ? pct(d.success_rate) : "데이터 없음";
-  $("h-bar").style.width = (d.success_rate * 100) + "%";
+  // 사람 막대
+  $("h-val").textContent = d.attempts ? pct(d.success_rate) : "데이터 없음";
+  $("h-fill").style.width = (d.success_rate * 100) + "%";
 
+  // VibeCutter 막대
   if (d.vibecutter != null) {
-    $("v-rate").textContent = pct(d.vibecutter);
-    $("v-rate").className = "";
-    $("v-rate").style.color = "oklch(0.72 0.15 25)";
-    $("v-bar").className = "fill-auto";
-    $("v-bar").style.width = (d.vibecutter * 100) + "%";
+    $("v-val").textContent = pct(d.vibecutter);
+    $("v-track").classList.remove("track-pending");
+    $("v-fill").style.display = "block";
+    $("v-fill").style.width = (d.vibecutter * 100) + "%";
     const det = d.vibecutter_detail;
-    if (det) {
-      $("v-note").textContent = `랜덤 인스턴스 ${det.instances}개 중 자동도구가 ${det.solved}개 성공 — 낮을수록 우리 주입이 자동도구에 강하다는 뜻.`;
-    } else {
-      $("v-note").style.display = "none";
-    }
+    $("v-note").textContent = det
+      ? `랜덤 인스턴스 ${det.instances}개 중 자동도구가 ${det.solved}개 성공 — 낮을수록 우리 주입이 자동도구에 강하다는 뜻.`
+      : "";
+  } else {
+    $("v-val").textContent = "벤치마크 대기";
   }
 
+  // 난이도·취약점별 표
   const rows = [];
-  const push = (label, badgeStyle, m) => {
-    const rate = m.attempts ? m.solved / m.attempts : 0;
-    rows.push(`<tr><td><span class="badge" style="${badgeStyle}">${label}</span></td><td class="num">${m.attempts}</td><td class="num" style="color:oklch(0.8 0.13 155);">${m.solved}</td><td class="num">${pct(rate)}</td></tr>`);
+  const tierTag = {
+    easy: "border:1px solid var(--color-text);color:var(--color-text);",
+    hard: "border:1px solid var(--color-accent);background:var(--color-accent-100);color:var(--color-accent-800);",
   };
-  const tierBadge = { easy: "color:oklch(0.8 0.13 155);border:1px solid oklch(0.42 0.09 155);", hard: "color:oklch(0.8 0.13 65);border:1px solid oklch(0.45 0.1 65);" };
-  const vulnBadge = "color:oklch(0.82 0.12 230);border:1px solid oklch(0.45 0.08 230);";
-  for (const [t, m] of Object.entries(d.by_tier || {})) push(t, tierBadge[t] || tierBadge.easy, m);
-  for (const [v, m] of Object.entries(d.by_vuln || {})) push(TYPE[v] || v, vulnBadge, m);
-  $("break").innerHTML = rows.length ? rows.join("") : '<tr><td colspan="4" class="empty">아직 시도 데이터가 없습니다. 훈련장에서 챌린지를 풀어보세요.</td></tr>';
+  const vulnTag = "border:1px solid var(--color-text);color:var(--color-text);";
+  const push = (label, style, m) => {
+    const rate = m.attempts ? m.solved / m.attempts : 0;
+    rows.push(
+      `<tr><td><span class="tag" style="${style}">${label}</span></td>` +
+      `<td class="n">${pad2(m.attempts)}</td>` +
+      `<td class="n" style="color:var(--color-accent);">${pad2(m.solved)}</td>` +
+      `<td class="n">${pct(rate)}</td></tr>`
+    );
+  };
+  for (const [t, m] of Object.entries(d.by_tier || {})) push(t, tierTag[t] || tierTag.easy, m);
+  for (const [v, m] of Object.entries(d.by_vuln || {})) push(TYPE[v] || v, vulnTag, m);
+  $("break").innerHTML = rows.length
+    ? rows.join("")
+    : '<tr><td colspan="4" class="muted" style="padding:var(--space-6) 0;">아직 시도 데이터가 없습니다. 훈련장에서 챌린지를 풀어보세요.</td></tr>';
 }
 load();
 </script>
