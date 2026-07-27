@@ -48,6 +48,10 @@ def get_note_by_id(note_id: int) -> Note | None:
     return Note(**raw)
 
 
+def list_notes_in_workspace(workspace_id: int) -> list[Note]:
+    return [Note(**raw) for raw in _NOTES_BY_ID.values() if raw["workspace_id"] == workspace_id]
+
+
 def _build_notes_db(seed: dict) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.execute(
