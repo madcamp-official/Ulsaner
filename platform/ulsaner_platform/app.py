@@ -208,7 +208,7 @@ def create_app(
                 detail="인스턴스 생성에 실패했습니다 (Docker 데몬·엔진 상태를 확인하세요).",
             ) from exc
         try:
-            return service.spin_up(bundle_dir, cleanup=cleanup)
+            return service.spin_up(bundle_dir, name=spec.name, cleanup=cleanup)
         except CapacityError as exc:  # 경합으로 그 사이 꽉 찬 경우
             cleanup()
             raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -258,6 +258,7 @@ def create_app(
             "success_rate": round(solved / attempts, 4) if attempts else 0.0,
             "by_tier": agg("tier"),
             "by_vuln": agg("vuln_type"),
+            "by_challenge": agg("challenge_name"),  # 챌린지 슬롯별 시도·성공 횟수
             "vibecutter": vibecutter,
             "vibecutter_detail": vibecutter_detail,
         }

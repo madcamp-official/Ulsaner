@@ -47,7 +47,8 @@ class CapacityError(ChallengeError):
 class Attempt:
     """flag 제출 시도 한 건(통계·로깅용)."""
 
-    challenge_id: str
+    challenge_id: str  # 인스턴스 uuid(스핀업마다 다름)
+    challenge_name: str  # 카탈로그 슬롯 이름(easy-idor-01 등, 스핀업 간 안정) — 챌린지별 집계 키
     vuln_type: str
     tier: str
     correct: bool
@@ -64,6 +65,7 @@ class ActiveChallenge:
     manifest: Manifest
     instance: Instance
     created_at: float
+    name: str = ""  # 카탈로그 슬롯 이름(챌린지별 성공 횟수 집계용)
     attempts: list[Attempt] = field(default_factory=list)
     # 엔진 생성 번들처럼 스핀업마다 임시 디렉토리를 쓰는 경우, teardown 시 호출해 정리한다.
     cleanup: Callable[[], None] = _noop
@@ -94,6 +96,7 @@ class ChallengeService:
         self,
         bundle_dir: str | Path,
         *,
+        name: str = "",
         cleanup: Callable[[], None] = _noop,
     ) -> dict:
         """번들을 배포하고 학생용 뷰(challenge_id + URL + 과제)를 돌려준다.
@@ -131,6 +134,7 @@ class ChallengeService:
             manifest=manifest,
             instance=instance,
             created_at=self._clock(),
+            name=name,
             cleanup=cleanup,
         )
         return self._student_view(challenge_id)
@@ -152,6 +156,7 @@ class ChallengeService:
         correct = active.manifest.check_flag(submitted)
         attempt = Attempt(
             challenge_id=challenge_id,
+            challenge_name=active.name,
             vuln_type=active.manifest.vuln_type,
             tier=active.manifest.tier,
             correct=correct,

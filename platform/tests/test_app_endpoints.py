@@ -180,8 +180,20 @@ def test_stats_empty_is_zero_rate():
     stats = make_client().get("/stats").json()
     assert stats == {
         "attempts": 0, "solved": 0, "success_rate": 0.0,
-        "by_tier": {}, "by_vuln": {}, "vibecutter": None, "vibecutter_detail": None,
+        "by_tier": {}, "by_vuln": {}, "by_challenge": {},
+        "vibecutter": None, "vibecutter_detail": None,
     }
+
+
+def test_stats_counts_solves_per_challenge():
+    # 챌린지 슬롯별 성공 횟수를 기록한다(한 번 풀어도 클리어가 아니라 누적 카운트).
+    client = make_client()
+    for _ in range(2):  # easy-idor-01 을 두 번 풀기
+        cid = client.post("/challenges", json={"name": "easy-idor-01"}).json()["challenge_id"]
+        client.post(f"/challenges/{cid}/submit", json={"flag": "FLAG{nope}"})  # 오답 1
+        client.post(f"/challenges/{cid}/submit", json={"flag": FLAG})  # 정답 → teardown
+    by_ch = client.get("/stats").json()["by_challenge"]
+    assert by_ch["easy-idor-01"] == {"attempts": 4, "solved": 2}
 
 
 def test_stats_reports_vibecutter_when_result_file_present(tmp_path):
