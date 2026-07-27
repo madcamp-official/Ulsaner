@@ -116,6 +116,15 @@ def test_solving_tears_down_the_instance():
         svc.submit_flag(view["challenge_id"], FLAG)
 
 
+def test_attempt_records_challenge_name_for_per_slot_stats():
+    svc = make_service()
+    view = svc.spin_up(FIXTURE, name="easy-idor-01")
+    svc.submit_flag(view["challenge_id"], "FLAG{nope}")
+    svc.submit_flag(view["challenge_id"], FLAG)
+    log = svc.attempt_log()
+    assert [a.challenge_name for a in log] == ["easy-idor-01", "easy-idor-01"]
+
+
 def test_attempts_are_logged_for_stats():
     svc = make_service()
     view = svc.spin_up(FIXTURE)

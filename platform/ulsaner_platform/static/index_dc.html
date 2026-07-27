@@ -62,7 +62,7 @@ const UPCOMING = [
 ];
 
 const state = {
-  solved: 0, attempts: 0, phase: "catalog",   // catalog | spinup | running | solved
+  solved: 0, attempts: 0, byChallenge: {}, phase: "catalog",   // catalog | spinup | running | solved
   challenges: [], instance: null, flagInput: "", result: null, copyLabel: "URL 복사", spinLog: [], ttl: 0,
 };
 let ttlTimer = null;
@@ -83,7 +83,7 @@ async function loadCatalog() {
 }
 async function loadStats() {
   const { data } = await api("/stats");
-  if (data) { state.solved = data.solved; state.attempts = data.attempts; render(); }
+  if (data) { state.solved = data.solved; state.attempts = data.attempts; state.byChallenge = data.by_challenge || {}; render(); }
 }
 
 async function start(id) {
@@ -185,9 +185,17 @@ function catalogView() {
     const status = c.locked
       ? '<span style="font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent);">준비 중</span>'
       : `<button class="btn btn-primary btn-block" data-act="start" data-id="${esc(c.id)}" style="justify-content:flex-start;">시작하기 →</button>`;
+    const solves = ((state.byChallenge[c.id] || {}).solved) || 0;
+    const solveBadge = c.locked ? ""
+      : solves > 0
+        ? `<span style="font-family:var(--font-body);font-weight:600;font-size:11px;letter-spacing:0.03em;color:var(--color-accent-700);">✓ ${solves}회 성공</span>`
+        : `<span style="font-family:var(--font-body);font-size:11px;letter-spacing:0.03em;color:color-mix(in srgb,var(--color-text) 40%,transparent);">미해결</span>`;
     return `<div style="${rowBase}${c.locked ? "opacity:0.5;" : ""}">
       <span style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:13px;font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--color-text) 45%,transparent);">${pad2(i + 1)}</span>
-      <span style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:19px;letter-spacing:-0.02em;">${esc(c.id)}</span>
+      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+        <span style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:19px;letter-spacing:-0.02em;">${esc(c.id)}</span>
+        ${solveBadge}
+      </span>
       <span><span class="tag" style="${typeStyle}">${esc(c.type)}</span></span>
       <span><span class="tag" style="${tierStyle}">${esc(c.tier)}</span></span>
       <span style="font-size:13.5px;line-height:1.5;color:color-mix(in srgb,var(--color-text) 72%,transparent);">${esc(c.summary)}</span>
