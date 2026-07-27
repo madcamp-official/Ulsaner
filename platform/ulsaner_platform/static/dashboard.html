@@ -97,11 +97,24 @@ td { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-divider); f
   <!-- VibeCutter -->
   <div style="max-width:900px;">
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-2);">
-      <span class="eyebrow" style="color:var(--color-accent);">VibeCutter · 자동도구</span>
+      <span class="eyebrow" style="color:var(--color-accent);">VibeCutter · 자동도구 <span class="muted" style="letter-spacing:0;text-transform:none;">(prefilter 수정 후)</span></span>
       <span class="num" id="v-val" style="font-size:26px;color:var(--color-accent);">–</span>
     </div>
     <div class="track track-pending" id="v-track"><div class="fill fill-auto" id="v-fill" style="display:none;"></div></div>
+
+    <!-- 수정 전(stock) 대비 -->
+    <div id="v-stock-wrap" style="display:none;margin-top:var(--space-5);">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-2);">
+        <span class="eyebrow muted">VibeCutter · 수정 전(stock)</span>
+        <span class="num muted" id="v-stock-val" style="font-size:18px;">–</span>
+      </div>
+      <div class="track"><div class="fill" id="v-stock-fill" style="width:0;background:var(--color-text);opacity:.35;"></div></div>
+    </div>
+
     <p class="muted" id="v-note" style="margin:var(--space-3) 0 0;font-size:12.5px;max-width:70ch;">엔진 파트에서 VibeCutter 벤치마크를 실행하면 이 자리에 자동도구 성공률이 채워진다.</p>
+
+    <!-- 클래스별 분해 -->
+    <div id="v-classes" style="display:none;margin-top:var(--space-6);"></div>
   </div>
 </section>
 
@@ -145,10 +158,42 @@ async function load() {
     $("v-track").classList.remove("track-pending");
     $("v-fill").style.display = "block";
     $("v-fill").style.width = (d.vibecutter * 100) + "%";
-    const det = d.vibecutter_detail;
-    $("v-note").textContent = det
-      ? `랜덤 인스턴스 ${det.instances}개 중 자동도구가 ${det.solved}개 성공 — 낮을수록 우리 주입이 자동도구에 강하다는 뜻.`
+    const det = d.vibecutter_detail || {};
+
+    // 기본 노트 + exploitable 대비(사람 vs 자동도구의 핵심)
+    let note = det.instances != null
+      ? `랜덤 인스턴스 ${det.instances}개 중 자동도구가 ${det.solved}개 탐지·검증.`
       : "";
+    if (det.exploitable != null) {
+      const missed = det.exploitable - det.solved;
+      note += ` 하지만 ${det.exploitable}개가 실제로 취약(레퍼런스 익스플로잇 통과) — 놓친 ${missed}개는 취약점이 없어서가 아니라 자동도구가 못 잡은 것.`;
+    } else {
+      note += " 낮을수록 우리 주입이 자동도구에 강하다는 뜻.";
+    }
+    $("v-note").textContent = note;
+
+    // 수정 전(stock) 대비 — 있으면 표시
+    if (det.stock_rate != null) {
+      $("v-stock-wrap").style.display = "block";
+      $("v-stock-val").textContent = pct(det.stock_rate);
+      $("v-stock-fill").style.width = (det.stock_rate * 100) + "%";
+    }
+
+    // 클래스별 분해 막대
+    if (det.by_class) {
+      const items = Object.entries(det.by_class).map(([k, r]) =>
+        `<div style="margin-bottom:var(--space-4);">` +
+          `<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">` +
+            `<span class="muted">${k}</span>` +
+            `<span class="num" style="color:var(--color-accent);">${pct(r)}</span>` +
+          `</div>` +
+          `<div class="track"><div class="fill fill-auto" style="width:${r * 100}%;"></div></div>` +
+        `</div>`
+      ).join("");
+      $("v-classes").style.display = "block";
+      $("v-classes").innerHTML =
+        `<div class="eyebrow muted" style="margin-bottom:var(--space-3);">취약 클래스별 (자동도구, 수정 후)</div>` + items;
+    }
   } else {
     $("v-val").textContent = "벤치마크 대기";
   }
