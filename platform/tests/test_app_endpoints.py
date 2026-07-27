@@ -6,8 +6,9 @@ create_app 에 가짜 배포기를 주입한 ChallengeService 를 넣어 Docker 
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from ulsaner_platform.app import create_app
+from ulsaner_platform.app import Challenge, create_app
 from ulsaner_platform.service import ChallengeService
+from ulsaner_platform.sources import fixture_source
 
 from orchestrator.runner import Instance
 
@@ -24,7 +25,16 @@ def make_client() -> TestClient:
         stop_fn=lambda container_id: None,
         clock=lambda: 1000.0,
     )
-    return TestClient(create_app(service=svc, bundles={"easy-idor-01": FIXTURE}))
+    challenges = [
+        Challenge(
+            name="easy-idor-01",
+            vuln_type="idor",
+            tier="easy",
+            task_prompt="다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요.",
+            provision=fixture_source(FIXTURE),
+        )
+    ]
+    return TestClient(create_app(service=svc, challenges=challenges))
 
 
 def test_health_still_ok():
@@ -92,6 +102,32 @@ def test_spin_up_unknown_challenge_is_404():
     assert resp.status_code == 404
 
 
+def test_spin_up_at_capacity_returns_503():
+    # 동시 상한 도달 시 새 스핀업은 503 으로 거절한다.
+    svc = ChallengeService(
+        deploy_fn=lambda bundle_dir, *, tag, container_port: Instance(
+            container_id=f"cont-{tag}", host_port=55000, url="http://127.0.0.1:55000"
+        ),
+        stop_fn=lambda container_id: None,
+        clock=lambda: 1000.0,
+        max_active=1,
+    )
+    challenges = [
+        Challenge(
+            name="easy-idor-01",
+            vuln_type="idor",
+            tier="easy",
+            task_prompt="다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요.",
+            provision=fixture_source(FIXTURE),
+        )
+    ]
+    client = TestClient(create_app(service=svc, challenges=challenges))
+
+    assert client.post("/challenges", json={"name": "easy-idor-01"}).status_code == 200
+    resp = client.post("/challenges", json={"name": "easy-idor-01"})
+    assert resp.status_code == 503
+
+
 def test_submit_correct_then_wrong_flow():
     client = make_client()
     cid = client.post("/challenges", json={"name": "easy-idor-01"}).json()["challenge_id"]
@@ -116,3 +152,34 @@ def test_stats_counts_attempts():
     stats = client.get("/stats").json()
     assert stats["attempts"] == 2
     assert stats["solved"] == 1
+
+
+def test_stats_breakdown_by_tier_and_vuln():
+    client = make_client()
+    cid = client.post("/challenges", json={"name": "easy-idor-01"}).json()["challenge_id"]
+    client.post(f"/challenges/{cid}/submit", json={"flag": "FLAG{wrong}"})  # 오답
+    client.post(f"/challenges/{cid}/submit", json={"flag": FLAG})  # 정답 → teardown
+
+    stats = client.get("/stats").json()
+    assert stats["attempts"] == 2
+    assert stats["solved"] == 1
+    assert stats["success_rate"] == 0.5
+    assert stats["by_tier"]["easy"] == {"attempts": 2, "solved": 1}
+    assert stats["by_vuln"]["idor"] == {"attempts": 2, "solved": 1}
+    # VibeCutter 벤치마크는 아직 미실행 → 자리표시자 None
+    assert stats["vibecutter"] is None
+
+
+def test_stats_empty_is_zero_rate():
+    stats = make_client().get("/stats").json()
+    assert stats == {
+        "attempts": 0, "solved": 0, "success_rate": 0.0,
+        "by_tier": {}, "by_vuln": {}, "vibecutter": None,
+    }
+
+
+def test_dashboard_page_serves():
+    resp = make_client().get("/dashboard")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "VibeCutter" in resp.text

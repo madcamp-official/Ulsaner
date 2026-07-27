@@ -9,8 +9,32 @@
 """
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse
 
 app = FastAPI(title="Notes (easy/idor fixture)")
+
+_LANDING = """<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes API — 취약점 훈련 대상</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 56px auto; padding: 0 22px; line-height: 1.75; color: #201e1d; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  code { background: #eae9e9; padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, monospace; }
+  a { color: #b0483a; } .muted { color: #6b6767; font-size: 14px; }
+</style></head><body>
+<h1>Notes API</h1>
+<p class="muted">취약점 훈련 대상 — 이건 홈페이지가 아니라 <b>공략할 API</b>입니다. 엔드포인트를 직접 찔러 취약점을 찾으세요.</p>
+<p><b>인증</b> · 당신은 <code>alice</code> 계정입니다. 요청 헤더에 <code>Authorization: Bearer alice-token</code> 을 넣으세요.</p>
+<p><b>탐색</b> · <a href="/docs">/docs</a> (Swagger UI)에서 엔드포인트를 눌러볼 수 있습니다.</p>
+<p><b>목표</b> · 다른 사용자의 비공개 노트에 심긴 <code>FLAG{…}</code> 를 읽어 훈련장에 제출하세요.</p>
+</body></html>"""
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> str:
+    # 학생이 접속 URL 을 그냥 열었을 때 404 대신 안내(취약점은 노출하지 않음).
+    return _LANDING
 
 # --- 시드 데이터 -------------------------------------------------------------
 # 토큰 -> user_id

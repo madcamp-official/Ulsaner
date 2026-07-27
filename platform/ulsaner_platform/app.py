@@ -13,64 +13,68 @@
 
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Union
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from ulsaner_platform.manifest import load_bundle_manifest
-from ulsaner_platform.service import ChallengeNotFound, ChallengeService
+from orchestrator.runner import OrchestratorError
+from ulsaner_platform.service import (
+    CapacityError,
+    ChallengeNotFound,
+    ChallengeService,
+)
+from ulsaner_platform.sources import Provision, engine_source, fixture_source
 
+_log = logging.getLogger("ulsaner.platform")
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
-_LIVE_WORKDIR = _REPO_ROOT / ".ulsaner-live-bundles"
+_FIXTURE_DIR = _REPO_ROOT / "platform" / "fixtures" / "easy-idor-01"
 
 
 @dataclass(frozen=True)
-class LiveChallenge:
-    """엔진이 스핀업 시점마다 새로 생성하는 챌린지 — 고정 fixture와 달리 매번 유니크하다."""
+class Challenge:
+    """카탈로그에 노출할 챌린지 스펙 + 스핀업 시 번들을 얻는 소스.
 
+    메타데이터(vuln_type/tier/task_prompt)는 배포 없이 카드에 보여줄 값이라 스펙에 직접 둔다
+    (엔진 소스는 배포 전엔 정적 manifest 가 없으므로 manifest 에서 읽을 수 없다).
+    """
+
+    name: str
     vuln_type: str
     tier: str
     task_prompt: str
-    factory: Callable[[], Path]
+    provision: Provision
 
 
-BundleSource = Union[Path, LiveChallenge]
-
-
-def _generate_easy_idor() -> Path:
-    from engine.live_bundle import generate_live_bundle
-    from engine.slots.easy_idor import build_easy_idor_slot
-
-    return generate_live_bundle(build_easy_idor_slot, _LIVE_WORKDIR)
-
-
-def _generate_hard_idor() -> Path:
-    from engine.live_bundle import generate_live_bundle
-    from engine.slots.hard_idor import build_hard_idor_slot
-
-    return generate_live_bundle(build_hard_idor_slot, _LIVE_WORKDIR)
-
-
-DEFAULT_BUNDLES: dict[str, BundleSource] = {
-    "easy-idor-01": _REPO_ROOT / "platform" / "fixtures" / "easy-idor-01",
-    "easy-idor-live": LiveChallenge(
+# fixture(고정 flag) = 테스트·데모 기준, live(엔진 생성) = 인스턴스마다 랜덤 flag(thesis 실현).
+DEFAULT_CHALLENGES: list[Challenge] = [
+    Challenge(
+        name="easy-idor-01",
         vuln_type="idor",
         tier="easy",
-        task_prompt="다른 사용자의 비공개 노트를 읽어 flag를 찾아라",
-        factory=_generate_easy_idor,
+        task_prompt="당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요. (고정 fixture)",
+        provision=fixture_source(_FIXTURE_DIR),
     ),
-    "hard-idor-live": LiveChallenge(
+    Challenge(
+        name="easy-idor-live",
+        vuln_type="idor",
+        tier="easy",
+        task_prompt="당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요. (엔진 생성 · 매 인스턴스 랜덤 flag)",
+        provision=engine_source("idor", "easy"),
+    ),
+    Challenge(
+        name="hard-idor-live",
         vuln_type="idor",
         tier="hard",
-        task_prompt="다른 사용자의 비공개 노트를 읽어 flag를 찾아라",
-        factory=_generate_hard_idor,
+        task_prompt="당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요. (엔진 생성 · 존재하지만 틀린 권한 체크)",
+        provision=engine_source("idor", "hard"),
     ),
-}
+]
 
 
 class SpinUpRequest(BaseModel):
@@ -84,16 +88,34 @@ class SubmitRequest(BaseModel):
 def create_app(
     *,
     service: ChallengeService | None = None,
-    bundles: dict[str, BundleSource] | None = None,
+    challenges: list[Challenge] | None = None,
+    reclaim_on_startup: bool = False,
 ) -> FastAPI:
-    """앱을 조립한다. service/bundles 를 주입할 수 있어 테스트에서 Docker 를 우회한다."""
+    """앱을 조립한다. service/challenges 를 주입할 수 있어 테스트에서 Docker 를 우회한다.
+
+    reclaim_on_startup=True 면 기동 시 이전 프로세스가 남긴 고아 컨테이너를 회수한다
+    (Docker 가 없거나 실패해도 앱 기동은 막지 않는다).
+    """
     service = service or ChallengeService()
-    bundles = DEFAULT_BUNDLES if bundles is None else bundles
+    challenges = DEFAULT_CHALLENGES if challenges is None else challenges
+    by_name = {c.name: c for c in challenges}
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if reclaim_on_startup:
+            try:
+                removed = service.reclaim_orphans()
+                if removed:
+                    _log.info("기동 시 고아 컨테이너 %d개 회수: %s", len(removed), removed)
+            except Exception as exc:  # noqa: BLE001 — docker 부재/실패는 치명적이지 않다
+                _log.warning("기동 시 고아 회수 실패(무시하고 계속): %s", exc)
+        yield
 
     app = FastAPI(
         title="Ulsaner Platform",
         description="매번 새로 생성되는 웹 취약점 훈련 엔진 — 플랫폼(검증 서비스 · 웹 UI)",
         version="0.2.0",
+        lifespan=lifespan,
     )
 
     @app.get("/", response_class=HTMLResponse)
@@ -111,46 +133,60 @@ def create_app(
         # 대안 디자인 B(다크 콘솔) — 비교용.
         return (_STATIC_DIR / "index_claude.html").read_text(encoding="utf-8")
 
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dashboard() -> str:
+        # 통계 대시보드 — 시도/성공/정답률 + VibeCutter vs 사람.
+        return (_STATIC_DIR / "dashboard.html").read_text(encoding="utf-8")
+
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}
 
     @app.get("/challenges")
     def list_challenges() -> dict:
-        # 카드용 메타데이터. 고정 fixture는 배포 없이 manifest에서 읽고,
-        # LiveChallenge는 스핀업 전이라 실제 manifest가 없으므로 고정 메타데이터를 쓴다
-        # (task_prompt는 매 생성마다 동일하게 넘기므로 이 메타데이터와 항상 일치한다).
-        available = []
-        for name, source in bundles.items():
-            if isinstance(source, LiveChallenge):
-                available.append(
-                    {
-                        "name": name,
-                        "vuln_type": source.vuln_type,
-                        "tier": source.tier,
-                        "task_prompt": source.task_prompt,
-                    }
-                )
-            else:
-                manifest = load_bundle_manifest(source)
-                available.append(
-                    {
-                        "name": name,
-                        "vuln_type": manifest.vuln_type,
-                        "tier": manifest.tier,
-                        "task_prompt": manifest.task_prompt,
-                    }
-                )
-        return {"available": available}
+        # 카드용 메타데이터를 배포 없이 스펙에서 제공(flag/_internal 은 애초에 없음).
+        return {
+            "available": [
+                {
+                    "name": c.name,
+                    "vuln_type": c.vuln_type,
+                    "tier": c.tier,
+                    "task_prompt": c.task_prompt,
+                }
+                for c in challenges
+            ]
+        }
 
     @app.post("/challenges")
     def spin_up(req: SpinUpRequest) -> dict:
-        source = bundles.get(req.name)
-        if source is None:
+        spec = by_name.get(req.name)
+        if spec is None:
             raise HTTPException(status_code=404, detail=f"알 수 없는 챌린지: {req.name}")
-        # LiveChallenge는 요청 시점에 엔진으로 새 인스턴스를 생성한다 — 매번 유니크한 번들.
-        bundle_dir = source.factory() if isinstance(source, LiveChallenge) else source
-        return service.spin_up(bundle_dir)
+        # 만원이면 비싼 번들 생성 전에 먼저 거절(만료분은 회수 후 재판정).
+        service.sweep_expired()
+        if service.at_capacity():
+            raise HTTPException(
+                status_code=503,
+                detail="동시 인스턴스 상한에 도달했습니다. 잠시 후 다시 시도하세요.",
+            )
+        # 엔진 소스는 여기서 실번들을 생성(Docker 빌드·자가검증 포함, 수십 초 가능).
+        try:
+            bundle_dir, cleanup = spec.provision()
+        except Exception as exc:  # 생성 실패(Docker 다운·엔진 오류 등)
+            raise HTTPException(
+                status_code=503,
+                detail="인스턴스 생성에 실패했습니다 (Docker 데몬·엔진 상태를 확인하세요).",
+            ) from exc
+        try:
+            return service.spin_up(bundle_dir, cleanup=cleanup)
+        except CapacityError as exc:  # 경합으로 그 사이 꽉 찬 경우
+            cleanup()
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except OrchestratorError as exc:  # 배포/헬스체크 실패(번들은 spin_up 이 이미 정리)
+            raise HTTPException(
+                status_code=503,
+                detail="인스턴스 배포에 실패했습니다 (컨테이너가 뜨지 않음).",
+            ) from exc
 
     @app.post("/challenges/{challenge_id}/submit")
     def submit(challenge_id: str, req: SubmitRequest) -> dict:
@@ -171,13 +207,30 @@ def create_app(
     @app.get("/stats")
     def stats() -> dict:
         log = service.attempt_log()
+        attempts = len(log)
+        solved = sum(1 for a in log if a.correct)
+
+        def agg(attr: str) -> dict:
+            out: dict[str, dict[str, int]] = {}
+            for a in log:
+                d = out.setdefault(getattr(a, attr), {"attempts": 0, "solved": 0})
+                d["attempts"] += 1
+                if a.correct:
+                    d["solved"] += 1
+            return out
+
         return {
-            "attempts": len(log),
-            "solved": sum(1 for a in log if a.correct),
+            "attempts": attempts,
+            "solved": solved,
+            "success_rate": round(solved / attempts, 4) if attempts else 0.0,
+            "by_tier": agg("tier"),
+            "by_vuln": agg("vuln_type"),
+            # VibeCutter 벤치마크(자동도구 성공률) 결과 자리 — 엔진 파트에서 실행 후 연동.
+            "vibecutter": None,
         }
 
     return app
 
 
 # uvicorn 진입점: `uvicorn ulsaner_platform.app:app`
-app = create_app()
+app = create_app(reclaim_on_startup=True)

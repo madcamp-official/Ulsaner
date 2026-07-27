@@ -10,7 +10,11 @@ manifest 는 진짜 fixture 를 읽어(load_bundle_manifest) 계약대로 동작
 from pathlib import Path
 
 import pytest
-from ulsaner_platform.service import ChallengeNotFound, ChallengeService
+from ulsaner_platform.service import (
+    CapacityError,
+    ChallengeNotFound,
+    ChallengeService,
+)
 
 from orchestrator.runner import Instance
 
@@ -140,3 +144,59 @@ def test_sweep_expired_tears_down_old_instances_only():
     assert old["challenge_id"] in expired
     assert fresh["challenge_id"] not in expired
     assert stopper.stopped == [f"cont-ulsaner-{old['challenge_id'][:12]}"]
+
+
+# --- 견고화: 동시 상한 -----------------------------------------------------
+
+def test_spin_up_rejects_when_at_capacity():
+    svc = ChallengeService(
+        deploy_fn=FakeDeployer(), stop_fn=FakeStopper(), clock=FakeClock(), max_active=1
+    )
+    svc.spin_up(FIXTURE)  # 1개 → 상한 도달
+    with pytest.raises(CapacityError):
+        svc.spin_up(FIXTURE)
+
+
+def test_capacity_frees_after_teardown():
+    svc = ChallengeService(
+        deploy_fn=FakeDeployer(), stop_fn=FakeStopper(), clock=FakeClock(), max_active=1
+    )
+    view = svc.spin_up(FIXTURE)
+    svc.teardown(view["challenge_id"])  # 자리 반납
+    svc.spin_up(FIXTURE)  # 다시 스핀업 가능(예외 없음)
+    assert len(svc.active_ids()) == 1
+
+
+def test_expired_instance_frees_capacity_on_spin_up():
+    # 상한이 꽉 차도, 스핀업 시 만료분을 먼저 회수하면 자리가 난다.
+    clock = FakeClock(now=1000.0)
+    svc = ChallengeService(
+        deploy_fn=FakeDeployer(), stop_fn=FakeStopper(),
+        clock=clock, ttl_seconds=600, max_active=1,
+    )
+    svc.spin_up(FIXTURE)  # t=1000
+    clock.now = 2000.0  # 1000s 경과(>600 만료)
+    svc.spin_up(FIXTURE)  # 만료분 회수 후 스핀업 성공
+    assert len(svc.active_ids()) == 1
+
+
+# --- 견고화: 고아 회수 -----------------------------------------------------
+
+def test_reclaim_orphans_preserves_active_containers():
+    captured = {}
+
+    def fake_reclaim(keep_ids):
+        captured["keep"] = set(keep_ids)
+        return ["orphan-x"]
+
+    svc = ChallengeService(
+        deploy_fn=FakeDeployer(), stop_fn=FakeStopper(),
+        reclaim_fn=fake_reclaim, clock=FakeClock(),
+    )
+    view = svc.spin_up(FIXTURE)
+
+    removed = svc.reclaim_orphans()
+
+    assert removed == ["orphan-x"]
+    # 살아있는 세션의 컨테이너는 보존 집합에 포함되어 회수 대상이 아니다.
+    assert f"cont-ulsaner-{view['challenge_id'][:12]}" in captured["keep"]

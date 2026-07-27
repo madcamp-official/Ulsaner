@@ -22,9 +22,6 @@ htmlcov/
 .env
 *.local
 
-# 엔진이 스핀업 요청마다 생성하는 라이브 번들(flag 등 포함, 커밋 금지)
-.ulsaner-live-bundles/
-
 # OS / editor
 .DS_Store
 .idea/

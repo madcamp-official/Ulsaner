@@ -104,7 +104,7 @@ docker stop demo-run && docker rm demo-run
 PYTHONPATH=platform .venv/bin/uvicorn ulsaner_platform.app:app --reload
 ```
 
-브라우저로 http://localhost:8000 접속 → 챌린지 목록에 `easy-idor-01`(고정 fixture)뿐 아니라 **`easy-idor-live`, `hard-idor-live`**(매번 새로 생성)도 뜬다. 스핀업하면 `.ulsaner-live-bundles/`에 그 인스턴스의 소스가 생성된다 — `seed_data.json`에서 토큰을 확인해 공격하면 된다(위 4장 방식과 동일).
+브라우저로 http://localhost:8000 접속 → 챌린지 목록에 `easy-idor-01`(고정 fixture)뿐 아니라 **`easy-idor-live`, `hard-idor-live`**(매번 새로 생성, `platform/ulsaner_platform/sources.py`의 `engine_source()`가 스핀업 때마다 `engine.bundle.generate_bundle`을 호출)도 뜬다. 스핀업하면 시스템 임시 디렉토리(`/tmp/ulsaner-bundle-*`)에 그 인스턴스의 소스가 생성된다 — `seed_data.json`에서 토큰을 확인해 공격하면 된다(위 4장 방식과 동일). 이 임시 디렉토리는 flag 제출 성공 또는 teardown 시 자동 삭제된다.
 
 ## 6. 자주 겪는 문제
 

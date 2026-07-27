@@ -13,12 +13,41 @@ from orchestrator.runner import (
     Instance,
     OrchestratorError,
     build_image,
+    container_logs,
+    container_state,
     deploy_bundle,
     get_mapped_port,
     instance_url,
+    list_managed,
+    reclaim_orphans,
     run_container,
     stop_container,
+    wait_until_ready,
 )
+
+
+class ScriptRunner:
+    """docker 하위명령(argv[1])별로 지정한 stdout 을 돌려주는 가짜 실행기.
+
+    fail_on 에 든 하위명령은 OrchestratorError 를 던진다(실패 경로 테스트).
+    """
+
+    def __init__(self, outputs: dict | None = None, fail_on=None):
+        self.calls: list[list[str]] = []
+        self.outputs = outputs or {}
+        self.fail_on = set(fail_on or [])
+
+    def __call__(self, argv):
+        self.calls.append(argv)
+        verb = argv[1]
+        if verb in self.fail_on:
+            raise OrchestratorError(f"boom: {verb}")
+        return subprocess.CompletedProcess(
+            argv, 0, stdout=self.outputs.get(verb, ""), stderr=""
+        )
+
+    def verbs(self) -> list[str]:
+        return [c[1] for c in self.calls]
 
 
 class FakeRunner:
@@ -149,3 +178,108 @@ def test_deploy_bundle_builds_runs_and_reports_instance(tmp_path):
     # build → run → port 순서로 docker 를 불렀는지
     verbs = [c[1] for c in fake.calls]
     assert verbs == ["build", "run", "port"]
+
+
+# --- 견고화: 라벨·상태·로그 -------------------------------------------------
+
+def test_run_container_tags_managed_label():
+    # 고아 회수의 안전 필터 — 우리가 띄운 컨테이너에만 라벨을 붙인다.
+    fake = FakeRunner(stdout="cid\n")
+    run_container("img", runner=fake)
+    argv = fake.calls[0]
+    assert "--label" in argv
+    assert "ulsaner.managed=1" in argv
+
+
+def test_container_state_parses_inspect():
+    fake = ScriptRunner(outputs={"inspect": "running\n"})
+    assert container_state("cid", runner=fake) == "running"
+    assert fake.calls[0] == ["docker", "inspect", "-f", "{{.State.Status}}", "cid"]
+
+
+def test_container_logs_combines_streams_and_survives_failure():
+    ok = ScriptRunner(outputs={"logs": "boot ok\n"})
+    assert "boot ok" in container_logs("cid", runner=ok)
+    dead = ScriptRunner(fail_on=["logs"])
+    assert container_logs("cid", runner=dead) == "(로그를 가져올 수 없음)"
+
+
+# --- 견고화: 준비 대기(헬스체크) -------------------------------------------
+
+def _clock_seq(values):
+    it = iter(values)
+    return lambda: next(it)
+
+
+def test_wait_until_ready_returns_when_probe_succeeds():
+    fake = ScriptRunner()
+    wait_until_ready(
+        60001, "cid", timeout=5, probe=lambda h, p, t: True,
+        sleep=lambda _: None, clock=_clock_seq([0, 0.1]), runner=fake,
+    )
+    # 프로브가 바로 통과하면 inspect 조차 부르지 않는다.
+    assert fake.calls == []
+
+
+def test_wait_until_ready_raises_on_timeout_while_still_alive():
+    fake = ScriptRunner(outputs={"inspect": "running\n"})
+    with pytest.raises(OrchestratorError, match="타임아웃"):
+        wait_until_ready(
+            60001, "cid", timeout=1.0, probe=lambda h, p, t: False,
+            sleep=lambda _: None, clock=_clock_seq([0, 0.3, 0.6, 1.5]), runner=fake,
+        )
+
+
+def test_wait_until_ready_fails_fast_when_container_exits():
+    # 앱이 뜨기 전에 컨테이너가 죽으면 기다리지 말고 로그와 함께 즉시 실패.
+    fake = ScriptRunner(outputs={"inspect": "exited\n", "logs": "Traceback: boom\n"})
+    with pytest.raises(OrchestratorError, match="종료"):
+        wait_until_ready(
+            60001, "cid", timeout=5, probe=lambda h, p, t: False,
+            sleep=lambda _: None, clock=_clock_seq([0, 0.3]), runner=fake,
+        )
+
+
+# --- 견고화: 고아 회수 ------------------------------------------------------
+
+def test_list_managed_filters_by_label_including_stopped():
+    fake = ScriptRunner(outputs={"ps": "aaa\nbbb\n"})
+    ids = list_managed(runner=fake)
+    assert ids == ["aaa", "bbb"]
+    argv = fake.calls[0]
+    assert argv[:3] == ["docker", "ps", "-a"]  # 종료된 것까지
+    assert "--no-trunc" in argv  # full id 로 추적 id 와 비교 가능하게
+    assert "label=ulsaner.managed=1" in argv
+
+
+def test_reclaim_orphans_removes_only_untracked_managed():
+    fake = ScriptRunner(outputs={"ps": "keepme\norphan1\norphan2\n"})
+    removed = reclaim_orphans({"keepme"}, runner=fake)
+    assert removed == ["orphan1", "orphan2"]
+    # keep 은 건드리지 않고, 고아 2개만 rm.
+    rm_targets = [c[-1] for c in fake.calls if c[1] == "rm"]
+    assert rm_targets == ["orphan1", "orphan2"]
+
+
+# --- 견고화: deploy_bundle 트랜잭셔널 + 헬스체크 ---------------------------
+
+def test_deploy_bundle_cleans_up_container_on_port_failure(tmp_path):
+    # run 은 됐지만 포트 조회가 실패하면 → 남은 컨테이너를 정리하고 예외를 올린다.
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    fake = ScriptRunner(outputs={"run": "leaked-cid\n", "port": ""})  # port 빈 출력 → 실패
+    with pytest.raises(OrchestratorError):
+        deploy_bundle(tmp_path, "tag", container_port=8000, runner=fake)
+    # 고아를 남기지 않도록 rm 이 불렸는지
+    rm_targets = [c[-1] for c in fake.calls if c[1] == "rm"]
+    assert rm_targets == ["leaked-cid"]
+
+
+def test_deploy_bundle_waits_for_readiness_when_requested(tmp_path):
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    fake = ScriptRunner(outputs={"run": "cid\n", "port": "127.0.0.1:60002\n"})
+    inst = deploy_bundle(
+        tmp_path, "tag", container_port=8000, wait_ready=True,
+        probe=lambda h, p, t: True, runner=fake,
+    )
+    assert inst.host_port == 60002
+    assert fake.verbs() == ["build", "run", "port"]  # 프로브 통과 → inspect 불필요
