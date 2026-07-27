@@ -59,6 +59,15 @@ def test_list_challenges_includes_metadata():
     assert "flag" not in item
 
 
+def test_default_catalog_includes_sqli_challenge():
+    # 기본 카탈로그(DEFAULT_CHALLENGES)에 엔진 sqli 챌린지가 노출된다(idor 외 2번째 종류).
+    client = TestClient(create_app(vibecutter_result_path=None))
+    items = client.get("/challenges").json()["available"]
+    sqli = next(c for c in items if c["name"] == "easy-sqli-live")
+    assert sqli["vuln_type"] == "sqli"
+    assert sqli["tier"] == "easy"
+
+
 def test_root_serves_dc_design():
     # 주 UI = Claude Design 핸드오프 재현본(다크 테크니컬).
     resp = make_client().get("/")
