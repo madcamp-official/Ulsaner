@@ -8,7 +8,10 @@ SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "contract" / "manife
 
 def test_schema_file_is_valid_json():
     schema = json.loads(SCHEMA_PATH.read_text())
-    assert schema["title"] == "Ulsaner Challenge Manifest"
+    # title wording is B(플랫폼)와 자유롭게 바뀔 수 있는 문구라 정확한 문자열은 검증하지 않는다 —
+    # 존재 여부와 스키마로서 최소 형태만 확인한다.
+    assert isinstance(schema.get("title"), str) and schema["title"]
+    assert schema.get("type") == "object"
 
 
 def test_build_manifest_has_required_fields():

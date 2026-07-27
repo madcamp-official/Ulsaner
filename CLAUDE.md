@@ -5,6 +5,7 @@ Ulsaner(취약점 주입 훈련 엔진) 프로젝트의 개발 규칙. 코드를
 - 설계: [`docs/superpowers/specs/2026-07-23-vuln-injection-training-engine-design.md`](docs/superpowers/specs/2026-07-23-vuln-injection-training-engine-design.md)
 - 구현 계획: [`docs/superpowers/plans/2026-07-23-ulsaner-implementation-plan.md`](docs/superpowers/plans/2026-07-23-ulsaner-implementation-plan.md)
 - 논의 기록: [`docs/2026-07-24-design-review-qna.md`](docs/2026-07-24-design-review-qna.md)
+- 실행 가이드: [`docs/running-the-engine.md`](docs/running-the-engine.md)
 
 ## 소유권 모델
 
