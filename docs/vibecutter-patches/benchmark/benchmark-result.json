@@ -1,0 +1,99 @@
+{
+  "_comment": "VibeCutter(자동 보안도구)가 Ulsaner 생성 IDOR 인스턴스를 잡는 비율. results/success_rate는 prefilter 인가맹점 수정을 적용한 VibeCutter(fixed) 기준 — easy-idor는 잡지만 hard-idor는 코드가 겉보기엔 스코프(user.workspace_id 사용)라 prefilter가 놓쳐 미탐. 수정 전(stock)은 easy조차 미탐(success_rate_stock). exploitable=verifier가 실제 재현한 ground truth(전부 True) — hard 미탐은 '취약점이 없어서'가 아니라 '자동 prefilter가 위장을 못 알아봐서'다.",
+  "seeds": [
+    1101,
+    1102,
+    1103,
+    1104,
+    2201,
+    2202,
+    2203,
+    2204
+  ],
+  "results": [
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false
+  ],
+  "success_rate": 0.5,
+  "success_rate_stock": 0.0,
+  "detail": [
+    {
+      "tier": "easy",
+      "seed": 1101,
+      "detected_stock": false,
+      "detected_fixed": true,
+      "exploitable": true,
+      "solved_stock": false,
+      "solved_fixed": true
+    },
+    {
+      "tier": "easy",
+      "seed": 1102,
+      "detected_stock": false,
+      "detected_fixed": true,
+      "exploitable": true,
+      "solved_stock": false,
+      "solved_fixed": true
+    },
+    {
+      "tier": "easy",
+      "seed": 1103,
+      "detected_stock": false,
+      "detected_fixed": true,
+      "exploitable": true,
+      "solved_stock": false,
+      "solved_fixed": true
+    },
+    {
+      "tier": "easy",
+      "seed": 1104,
+      "detected_stock": false,
+      "detected_fixed": true,
+      "exploitable": true,
+      "solved_stock": false,
+      "solved_fixed": true
+    },
+    {
+      "tier": "hard",
+      "seed": 2201,
+      "detected_stock": false,
+      "detected_fixed": false,
+      "exploitable": true,
+      "solved_stock": false,
+      "solved_fixed": false
+    },
+    {
+      "tier": "hard",
+      "seed": 2202,
+      "detected_stock": false,
+      "detected_fixed": false,
+      "exploitable": true,
+      "solved_stock": false,
+      "solved_fixed": false
+    },
+    {
+      "tier": "hard",
+      "seed": 2203,
+      "detected_stock": false,
+      "detected_fixed": false,
+      "exploitable": true,
+      "solved_stock": false,
+      "solved_fixed": false
+    },
+    {
+      "tier": "hard",
+      "seed": 2204,
+      "detected_stock": false,
+      "detected_fixed": false,
+      "exploitable": true,
+      "solved_stock": false,
+      "solved_fixed": false
+    }
+  ]
+}

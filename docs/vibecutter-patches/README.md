@@ -77,3 +77,37 @@ VC_ROOT=/path/to/VibeCutter TARGET_SRC=~/vibecutter-targets/easy-idor-seed9896 \
 
 **thesis 함의:** stock 자동 파이프라인은 이 IDOR 클래스를 놓친다(인증≠인가 혼동). 이는 "자동도구가
 사람이 잡는 취약점을 놓친다"의 실증 사례이자, 동시에 프리필터의 개선 지점이다.
+
+## 멀티-seed 벤치마크 (`benchmark/`)
+
+seed9896 한 건이 아니라 엔진으로 생성한 여러 인스턴스에 같은 실험을 돌려 성공률을 낸다.
+`platform/data/vibecutter_result.json`(대시보드 `/stats`가 읽는 형식 `{seeds,results,success_rate}`)에
+저장되며, 커밋된 스냅샷은 `benchmark/benchmark-result.json`이다.
+
+- `benchmark/gen_apps.py` (Phase 1, Ulsaner env): `easy_idor`/`hard_idor` 슬롯으로 seed별 취약 앱 생성.
+- `benchmark/audit_apps.py` (Phase 2, VibeCutter env): 각 앱을 띄워 prefilter 탐지(stock/fixed) +
+  verifier 재현을 기록. **회원가입 스캐폴딩 없이** seed 유저 토큰으로 `bearer_fixture` 재현.
+
+```bash
+ULSANER_ROOT=/path/to/Ulsaner \
+  $ULSANER_ROOT/.venv/bin/python docs/vibecutter-patches/benchmark/gen_apps.py /tmp/bench_work
+VC_ROOT=/path/to/VibeCutter VCVENV_PY=/path/to/target/.vcvenv/bin/python \
+  $VC_ROOT/.venv/bin/python docs/vibecutter-patches/benchmark/audit_apps.py \
+    /tmp/bench_work platform/data/vibecutter_result.json
+```
+
+### 결과 (8 인스턴스: easy×4, hard×4 — 2026-07-27)
+
+| tier | 정적 탐지 (stock) | 정적 탐지 (fixed) | 실제 취약(verifier) | VibeCutter solved (fixed) |
+|---|---|---|---|---|
+| easy-idor ×4 | ✗ | ✓ | ✓ | ✓ (4/4) |
+| hard-idor ×4 | ✗ | ✗ | ✓ | ✗ (0/4) |
+
+- **stock VibeCutter: 0/8 (0%)** — prefilter 맹점으로 easy조차 미탐.
+- **fixed VibeCutter: 4/8 (50%)** — easy는 다 잡지만 hard는 전부 놓침.
+
+`hard_idor` 슬롯은 소유권 검사를 **제거**하는 게 아니라 `note.owner_id != user.id`를
+`note.workspace_id != user.workspace_id`로 **바꾼다**. 두 유저가 같은 workspace라 교차 조회가
+통과되는 실제 IDOR(verifier가 8건 전부 재현=`exploitable:true`)인데, 코드가 겉보기엔 `user`로
+스코프된 듯 보여 정적 prefilter가 놓친다. 즉 **hard 미탐은 취약점이 없어서가 아니라 자동 도구가
+위장을 못 알아봐서** — 사람은 잡고 자동도구는 놓치는 지점의 실증이다.
