@@ -75,7 +75,7 @@ def test_engine_bundle_full_loop_random_flag():
         assert leaked.status_code == 404
 
         # 3) 제출 → 채점 통과 → teardown → 재제출 404
-        assert service.submit_flag(challenge_id, real_flag) is True
+        assert service.submit_flag(challenge_id, real_flag).correct is True
         with pytest.raises(ChallengeNotFound):
             service.submit_flag(challenge_id, real_flag)
     finally:

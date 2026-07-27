@@ -86,13 +86,27 @@ def test_spin_up_deploys_with_manifest_port():
 def test_submit_correct_flag_returns_true():
     svc = make_service()
     view = svc.spin_up(FIXTURE)
-    assert svc.submit_flag(view["challenge_id"], FLAG) is True
+    assert svc.submit_flag(view["challenge_id"], FLAG).correct is True
 
 
 def test_submit_wrong_flag_returns_false():
     svc = make_service()
     view = svc.spin_up(FIXTURE)
-    assert svc.submit_flag(view["challenge_id"], "FLAG{nope}") is False
+    assert svc.submit_flag(view["challenge_id"], "FLAG{nope}").correct is False
+
+
+def test_correct_submit_returns_reveal_without_flag():
+    # 정답 시에만 취약점 해설(reveal)이 붙고, 오답은 없다. reveal 에 flag 는 없다.
+    svc = make_service()
+    view = svc.spin_up(FIXTURE)
+    wrong = svc.submit_flag(view["challenge_id"], "FLAG{nope}")
+    assert wrong.reveal is None
+
+    view2 = svc.spin_up(FIXTURE)
+    right = svc.submit_flag(view2["challenge_id"], FLAG)
+    assert right.correct is True
+    assert right.reveal and right.reveal["solution_summary"]
+    assert FLAG not in str(right.reveal)  # 해설에 정답 flag 는 노출하지 않는다
 
 
 def test_submit_to_unknown_challenge_raises():

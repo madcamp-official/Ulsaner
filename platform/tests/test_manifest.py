@@ -88,6 +88,36 @@ def test_public_view_hides_flag_and_internal(tmp_path):
     assert "_internal" not in view
 
 
+def test_reveal_returns_educational_internal_without_flag(tmp_path):
+    data = copy.deepcopy(VALID_MANIFEST)
+    data["_internal"] = {
+        "flag_planted_in": "user 2의 비공개 노트",
+        "solution_summary": "소유권 검증 누락(IDOR)",
+        "reference_exploit": "GET /notes/2 (인증됨) — 200",
+    }
+    m = load_manifest(write_manifest(tmp_path, data))
+
+    reveal = m.reveal()
+
+    assert reveal["solution_summary"] == "소유권 검증 누락(IDOR)"
+    assert reveal["flag_planted_in"] == "user 2의 비공개 노트"
+    assert reveal["reference_exploit"].startswith("GET /notes/2")
+    assert reveal["vuln_type"] == "idor"
+    assert m.flag not in str(reveal)  # 해설엔 정답 flag 를 절대 넣지 않는다
+
+
+def test_reveal_drops_path_style_reference_exploit(tmp_path):
+    # 엔진 번들은 reference_exploit 에 "exploits/reference.json" 경로만 담는다 — 사람용 아님.
+    data = copy.deepcopy(VALID_MANIFEST)
+    data["_internal"] = {
+        "solution_summary": "권한 체크 로직 결함",
+        "reference_exploit": "exploits/reference.json",
+    }
+    reveal = load_manifest(write_manifest(tmp_path, data)).reveal()
+    assert reveal["solution_summary"] == "권한 체크 로직 결함"
+    assert "reference_exploit" not in reveal
+
+
 def test_load_bundle_manifest_reads_manifest_json_from_dir(tmp_path):
     write_manifest(tmp_path, VALID_MANIFEST)
 

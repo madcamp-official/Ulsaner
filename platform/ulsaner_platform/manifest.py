@@ -82,6 +82,25 @@ class Manifest:
             "entry": {"port": self.port, "task_prompt": self.task_prompt},
         }
 
+    # --- 정답 제출 후 교육용 리빌 ---
+    def reveal(self) -> dict:
+        """정답을 맞힌 뒤에만 노출하는 취약점 해설(드림핵 writeup 대응).
+
+        _internal 의 사람용 서술 필드만 추린다. flag·공격자 토큰은 절대 포함하지 않는다
+        (_internal 스키마에도 그런 값은 없다). reference_exploit 이 파일 경로 형태
+        (엔진 번들은 "exploits/reference.json" 만 담음)면 사람용이 아니라 제외한다.
+        """
+        internal = self._data.get("_internal") or {}
+        out: dict = {"vuln_type": self.vuln_type, "tier": self.tier}
+        for key in ("solution_summary", "flag_planted_in", "reference_exploit"):
+            val = internal.get(key)
+            if not val:
+                continue
+            if key == "reference_exploit" and str(val).endswith(".json"):
+                continue
+            out[key] = val
+        return out
+
 
 def _validate(data: dict) -> None:
     try:

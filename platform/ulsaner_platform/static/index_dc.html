@@ -63,7 +63,7 @@ const UPCOMING = [
 
 const state = {
   solved: 0, attempts: 0, byChallenge: {}, phase: "catalog",   // catalog | spinup | running | solved
-  challenges: [], instance: null, flagInput: "", result: null, copyLabel: "URL 복사", spinLog: [], ttl: 0,
+  challenges: [], instance: null, flagInput: "", result: null, reveal: null, copyLabel: "URL 복사", spinLog: [], ttl: 0,
 };
 let ttlTimer = null;
 
@@ -91,7 +91,7 @@ async function start(id) {
   if (!ch || ch.locked) return;
   clearInterval(ttlTimer);
   state.phase = "spinup"; state.instance = { challenge: ch }; state.spinLog = [];
-  state.flagInput = ""; state.result = null; state.copyLabel = "URL 복사"; render();
+  state.flagInput = ""; state.result = null; state.reveal = null; state.copyLabel = "URL 복사"; render();
 
   const steps = ["orchestrator spinup " + ch.id, "번들 빌드 (docker build) — ok", "컨테이너 실행 (non-root) — ok", "동적 포트 할당", "헬스체크 — healthy"];
   const t0 = Date.now();
@@ -125,7 +125,7 @@ async function submit() {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ flag: state.flagInput.trim() }),
   });
   if (status === 404) { state.result = "expired"; render(); await loadStats(); return; }
-  if (ok && data && data.correct) { clearInterval(ttlTimer); state.result = "correct"; state.phase = "solved"; }
+  if (ok && data && data.correct) { clearInterval(ttlTimer); state.result = "correct"; state.phase = "solved"; state.reveal = data.reveal || null; }
   else { state.result = "wrong"; }
   render(); await loadStats();
 }
@@ -133,7 +133,7 @@ async function submit() {
 async function exit(silent) {
   const inst = state.instance; clearInterval(ttlTimer);
   if (inst && inst.id) api(`/challenges/${inst.id}`, { method: "DELETE" }).catch(() => {});
-  state.phase = "catalog"; state.instance = null; state.flagInput = ""; state.result = null;
+  state.phase = "catalog"; state.instance = null; state.flagInput = ""; state.result = null; state.reveal = null;
   render(); if (!silent) loadStats();
 }
 
@@ -260,12 +260,23 @@ function sessionView() {
         <div style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:15px;color:var(--color-accent-800);">${state.result === "expired" ? "만료" : "오답"}</div>
         <div style="font-size:13px;color:var(--color-accent-800);opacity:0.85;">${state.result === "expired" ? "인스턴스가 종료되었습니다. 목록에서 다시 시작하세요." : "flag가 일치하지 않습니다. 시도 " + pad2(state.attempts) + "회."}</div>
       </div>` : "";
+    const rv = state.reveal;
+    const revealRows = rv ? [["왜 뚫렸나", rv.solution_summary], ["flag 위치", rv.flag_planted_in], ["레퍼런스 공격", rv.reference_exploit]]
+      .filter(([, v]) => v)
+      .map(([k, v]) => `<div style="display:grid;grid-template-columns:140px 1fr;gap:var(--space-6);padding:var(--space-4) 0;border-bottom:1px solid var(--color-divider);">
+          <span style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">${esc(k)}</span>
+          <span style="font-size:14.5px;line-height:1.6;">${esc(v)}</span></div>`).join("") : "";
+    const revealBox = (isSolved && rv) ? `<div style="border-top:2px solid var(--color-text);padding:var(--space-8);">
+        <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--color-accent);margin-bottom:var(--space-3);">이 인스턴스의 취약점 · 풀이 후 공개</div>
+        <p style="margin:0 0 var(--space-4);font-size:13px;line-height:1.6;color:color-mix(in srgb,var(--color-text) 62%,transparent);max-width:64ch;">매 인스턴스가 랜덤이라 정답을 검색해 찾을 수는 없지만, 어디에 취약점이 심겼는지는 풀이 후 이렇게 공개한다.</p>
+        ${revealRows}
+      </div>` : "";
     const solvedBox = isSolved ? `<div style="border-top:2px solid var(--color-text);background:var(--color-accent);color:var(--color-bg);padding:var(--space-8);">
         <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;opacity:0.85;margin-bottom:var(--space-2);">채점 결과</div>
         <div style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:56px;line-height:1;letter-spacing:-0.03em;">정답</div>
         <p style="margin:var(--space-4) 0 var(--space-6);font-size:15px;max-width:44ch;opacity:0.92;">flag가 검증되었습니다. 인스턴스는 종료되었고 풀이 수에 반영되었습니다.</p>
         <button class="btn" data-act="exit" style="background:var(--color-bg);color:var(--color-text);">목록으로 돌아가기</button>
-      </div>` : "";
+      </div>${revealBox}` : "";
     const meta = [["인스턴스", inst ? inst.id.slice(0, 12) : ""], ["포트", inst ? inst.port : ""], ["격리", "Docker · non-root"], ["채점", "flag 제출"]]
       .map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) var(--space-6);border-bottom:1px solid var(--color-divider);">
         <dt style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">${k}</dt>
