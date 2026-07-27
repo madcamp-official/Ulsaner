@@ -221,6 +221,33 @@ def test_stats_reports_vibecutter_when_result_file_present(tmp_path):
     assert stats["vibecutter_detail"] == {"instances": 4, "solved": 1}
 
 
+def test_stats_reports_vibecutter_rich_fields(tmp_path):
+    # 멀티클래스 하네스 형식이면 /stats 가 클래스별·stock·exploitable 확장 필드를 노출한다.
+    result = tmp_path / "vibecutter_result.json"
+    result.write_text(
+        json.dumps(
+            {
+                "seeds": [1, 2, 3],
+                "results": [True, False, False],
+                "success_rate": 0.3333,
+                "success_rate_stock": 0.0,
+                "success_rate_by_class": {"idor-easy": 1.0, "idor-hard": 0.0, "sqli-easy": 0.0},
+                "detail": [
+                    {"exploitable": True},
+                    {"exploitable": True},
+                    {"exploitable": True},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    det = make_client(vibecutter_result_path=result).get("/stats").json()["vibecutter_detail"]
+    assert det["instances"] == 3 and det["solved"] == 1
+    assert det["stock_rate"] == 0.0
+    assert det["by_class"] == {"idor-easy": 1.0, "idor-hard": 0.0, "sqli-easy": 0.0}
+    assert det["exploitable"] == 3  # 자동도구가 놓쳐도 3개 전부 실제 취약
+
+
 def test_stats_vibecutter_none_when_file_missing(tmp_path):
     # 결과 파일이 아직 없으면 '벤치마크 대기'(None)로 남는다.
     stats = make_client(vibecutter_result_path=tmp_path / "nope.json").get("/stats").json()
