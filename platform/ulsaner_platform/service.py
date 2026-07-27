@@ -44,6 +44,17 @@ class CapacityError(ChallengeError):
 
 
 @dataclass
+class SubmitResult:
+    """flag 제출 판정 결과. 정답일 때만 reveal(취약점 해설)이 채워진다."""
+
+    correct: bool
+    reveal: dict | None = None
+
+    def __bool__(self) -> bool:  # `if result:` 를 correct 로 취급(편의)
+        return self.correct
+
+
+@dataclass
 class Attempt:
     """flag 제출 시도 한 건(통계·로깅용)."""
 
@@ -147,8 +158,8 @@ class ChallengeService:
         return view
 
     # --- flag 판정 ------------------------------------------------------
-    def submit_flag(self, challenge_id: str, submitted: str) -> bool:
-        """제출 flag 를 판정하고 로깅한다. 정답이면 인스턴스를 정리(teardown)."""
+    def submit_flag(self, challenge_id: str, submitted: str) -> SubmitResult:
+        """제출 flag 를 판정·로깅한다. 정답이면 취약점 해설(reveal)을 담고 인스턴스를 정리한다."""
         active = self._active.get(challenge_id)
         if active is None:
             raise ChallengeNotFound(challenge_id)
@@ -165,9 +176,11 @@ class ChallengeService:
         active.attempts.append(attempt)
         self._log.append(attempt)
 
+        # 정답일 때만 해설을 만든다(teardown 으로 사라지기 전에 manifest 에서 뽑는다).
+        reveal = active.manifest.reveal() if correct else None
         if correct:
             self.teardown(challenge_id)
-        return correct
+        return SubmitResult(correct=correct, reveal=reveal)
 
     # --- 수명주기 -------------------------------------------------------
     def teardown(self, challenge_id: str) -> None:

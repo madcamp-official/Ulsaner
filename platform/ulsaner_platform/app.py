@@ -221,12 +221,15 @@ def create_app(
     @app.post("/challenges/{challenge_id}/submit")
     def submit(challenge_id: str, req: SubmitRequest) -> dict:
         try:
-            correct = service.submit_flag(challenge_id, req.flag)
+            result = service.submit_flag(challenge_id, req.flag)
         except ChallengeNotFound as exc:
             raise HTTPException(
                 status_code=404, detail="챌린지를 찾을 수 없거나 이미 해결됨"
             ) from exc
-        return {"correct": correct}
+        resp: dict = {"correct": result.correct}
+        if result.correct:  # 정답일 때만 취약점 해설을 함께 준다(리빌).
+            resp["reveal"] = result.reveal
+        return resp
 
     @app.delete("/challenges/{challenge_id}")
     def teardown(challenge_id: str) -> dict:

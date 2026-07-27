@@ -142,7 +142,9 @@ def test_submit_correct_then_wrong_flow():
     assert wrong.json() == {"correct": False}
 
     right = client.post(f"/challenges/{cid}/submit", json={"flag": FLAG})
-    assert right.json() == {"correct": True}
+    body = right.json()
+    assert body["correct"] is True
+    assert body["reveal"] and body["reveal"]["solution_summary"]  # 정답 시 해설 동반
 
     # 정답 후엔 teardown 되어 다시 제출 불가
     again = client.post(f"/challenges/{cid}/submit", json={"flag": FLAG})
