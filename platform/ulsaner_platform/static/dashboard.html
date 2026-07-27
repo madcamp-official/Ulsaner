@@ -108,7 +108,12 @@ async function load() {
     $("v-rate").style.color = "oklch(0.72 0.15 25)";
     $("v-bar").className = "fill-auto";
     $("v-bar").style.width = (d.vibecutter * 100) + "%";
-    $("v-note").style.display = "none";
+    const det = d.vibecutter_detail;
+    if (det) {
+      $("v-note").textContent = `랜덤 인스턴스 ${det.instances}개 중 자동도구가 ${det.solved}개 성공 — 낮을수록 우리 주입이 자동도구에 강하다는 뜻.`;
+    } else {
+      $("v-note").style.display = "none";
+    }
   }
 
   const rows = [];

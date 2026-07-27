@@ -3,6 +3,7 @@
 create_app 에 가짜 배포기를 주입한 ChallengeService 를 넣어 Docker 없이 HTTP 레이어를 검증.
 """
 
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -17,7 +18,7 @@ FIXTURE = REPO_ROOT / "platform" / "fixtures" / "easy-idor-01"
 FLAG = "FLAG{idor_bob_private_2f9c}"
 
 
-def make_client() -> TestClient:
+def make_client(vibecutter_result_path: Path | None = None) -> TestClient:
     svc = ChallengeService(
         deploy_fn=lambda bundle_dir, *, tag, container_port: Instance(
             container_id=f"cont-{tag}", host_port=55000, url="http://127.0.0.1:55000"
@@ -34,7 +35,12 @@ def make_client() -> TestClient:
             provision=fixture_source(FIXTURE),
         )
     ]
-    return TestClient(create_app(service=svc, challenges=challenges))
+    # 기본은 None(비활성) — 리포지토리에 결과 파일이 있어도 테스트가 흔들리지 않게.
+    return TestClient(
+        create_app(
+            service=svc, challenges=challenges, vibecutter_result_path=vibecutter_result_path
+        )
+    )
 
 
 def test_health_still_ok():
@@ -174,8 +180,29 @@ def test_stats_empty_is_zero_rate():
     stats = make_client().get("/stats").json()
     assert stats == {
         "attempts": 0, "solved": 0, "success_rate": 0.0,
-        "by_tier": {}, "by_vuln": {}, "vibecutter": None,
+        "by_tier": {}, "by_vuln": {}, "vibecutter": None, "vibecutter_detail": None,
     }
+
+
+def test_stats_reports_vibecutter_when_result_file_present(tmp_path):
+    # 서윤이 run_benchmark 결과를 이 형식으로 떨구면 /stats 가 그대로 읽어 노출한다.
+    result = tmp_path / "vibecutter_result.json"
+    result.write_text(
+        json.dumps(
+            {"seeds": [1, 2, 3, 4], "results": [True, False, False, False], "success_rate": 0.25}
+        ),
+        encoding="utf-8",
+    )
+    stats = make_client(vibecutter_result_path=result).get("/stats").json()
+    assert stats["vibecutter"] == 0.25
+    assert stats["vibecutter_detail"] == {"instances": 4, "solved": 1}
+
+
+def test_stats_vibecutter_none_when_file_missing(tmp_path):
+    # 결과 파일이 아직 없으면 '벤치마크 대기'(None)로 남는다.
+    stats = make_client(vibecutter_result_path=tmp_path / "nope.json").get("/stats").json()
+    assert stats["vibecutter"] is None
+    assert stats["vibecutter_detail"] is None
 
 
 def test_dashboard_page_serves():
