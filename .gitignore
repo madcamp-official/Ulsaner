@@ -38,3 +38,7 @@ __pycache__/
 .eggs/
 build/
 dist/
+
+# 엔진이 생성하는 라이브 번들(flag·토큰 등 시크릿 포함, 절대 커밋 금지)
+.ulsaner-live-bundles/
+
