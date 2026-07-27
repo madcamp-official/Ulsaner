@@ -26,7 +26,7 @@ _LANDING = """<!doctype html>
 <h1>Notes API</h1>
 <p class="muted">취약점 훈련 대상 — 이건 홈페이지가 아니라 <b>공략할 API</b>입니다. 엔드포인트를 직접 찔러 취약점을 찾으세요.</p>
 <p><b>인증</b> · 당신은 <code>alice</code> 계정입니다. 요청 헤더에 <code>Authorization: Bearer alice-token</code> 을 넣으세요.</p>
-<p><b>탐색</b> · <a href="/docs">/docs</a> (Swagger UI)에서 엔드포인트를 눌러볼 수 있습니다.</p>
+<p><b>탐색</b> · <code>GET /notes</code> 로 워크스페이스의 노트 목록(메타데이터)을 볼 수 있고, <code>GET /notes/{id}</code> 로 개별 노트를 엽니다. <a href="/docs">/docs</a>(Swagger UI)도 있습니다.</p>
 <p><b>목표</b> · 다른 사용자의 비공개 노트에 심긴 <code>FLAG{…}</code> 를 읽어 훈련장에 제출하세요.</p>
 </body></html>"""
 
@@ -49,13 +49,15 @@ USERS = {
 }
 
 # flag 는 bob(id=2) 의 비공개 노트(id=42)에 심겨 있다.
+# 각 노트에 title(메타데이터)을 둔다 — 목록 엔드포인트가 이걸로 '발견 경로'를 제공한다.
 NOTES = {
-    1: {"id": 1, "owner_id": 1, "private": True, "content": "alice의 개인 메모: 장보기 목록"},
-    2: {"id": 2, "owner_id": 1, "private": False, "content": "alice의 공개 노트"},
+    1: {"id": 1, "owner_id": 1, "private": True, "title": "장보기 목록", "content": "alice의 개인 메모: 우유, 계란"},
+    2: {"id": 2, "owner_id": 1, "private": False, "title": "공개 메모", "content": "alice의 공개 노트"},
     42: {
         "id": 42,
         "owner_id": 2,
         "private": True,
+        "title": "팀 비공개 노트",
         "content": "bob의 비공개 노트: FLAG{idor_bob_private_2f9c}",
     },
 }
@@ -77,6 +79,27 @@ def current_user(authorization: str | None) -> dict:
 @app.get("/me")
 def me(authorization: str | None = Header(default=None)) -> dict:
     return current_user(authorization)
+
+
+@app.get("/notes")
+def list_notes(authorization: str | None = Header(default=None)) -> list[dict]:
+    """워크스페이스 피드 — 모든 노트의 '메타데이터'만 반환한다(내용 제외).
+
+    이건 정상 기능이다: 로그인 사용자는 노트 목록(누가 어떤 제목의 노트를 가졌는지)을 본다.
+    여기서 다른 사용자의 노트 id·소유자·비공개 여부를 알 수 있다 = 발견 경로.
+    내용(content, flag 포함)은 절대 여기 노출하지 않는다 — 내용은 /notes/{id} 에서만.
+    """
+    current_user(authorization)  # 피드는 로그인 사용자에게만
+    return [
+        {
+            "id": n["id"],
+            "owner_id": n["owner_id"],
+            "owner": USERS[n["owner_id"]]["name"],
+            "title": n["title"],
+            "private": n["private"],
+        }
+        for n in sorted(NOTES.values(), key=lambda x: x["id"])
+    ]
 
 
 @app.get("/notes/{note_id}")
