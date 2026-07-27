@@ -20,3 +20,13 @@ def test_get_current_user_rejects_unknown_token():
 
 def test_get_note_by_id_returns_none_for_missing_note():
     assert db.get_note_by_id(999) is None
+
+
+def test_search_notes_by_title_returns_only_public_matches():
+    rows = db.search_notes_by_title("public")
+    assert rows == [(2, "public")]
+
+
+def test_search_notes_by_title_excludes_private_notes_even_when_title_matches():
+    rows = db.search_notes_by_title("private")
+    assert rows == []

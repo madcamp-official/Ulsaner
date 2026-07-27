@@ -1,5 +1,6 @@
 import json
 import pathlib
+import sqlite3
 from fastapi import Header, HTTPException
 
 _SEED_PATH = pathlib.Path(__file__).parent / "seed_data.json"
@@ -45,3 +46,32 @@ def get_note_by_id(note_id: int) -> Note | None:
     if raw is None:
         return None
     return Note(**raw)
+
+
+def _build_notes_db(seed: dict) -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.execute(
+        "CREATE TABLE notes ("
+        "id INTEGER, owner_id INTEGER, workspace_id INTEGER, "
+        "title TEXT, body TEXT, is_private INTEGER)"
+    )
+    conn.executemany(
+        "INSERT INTO notes (id, owner_id, workspace_id, title, body, is_private) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (n["id"], n["owner_id"], n["workspace_id"], n["title"], n["body"], int(n["is_private"]))
+            for n in seed["notes"]
+        ],
+    )
+    conn.commit()
+    return conn
+
+
+_NOTES_DB = _build_notes_db(_SEED)
+
+
+def search_notes_by_title(q: str) -> list[tuple]:
+    cursor = _NOTES_DB.execute(
+        "SELECT id, title FROM notes WHERE is_private = 0 AND title LIKE ?",
+        (f"%{q}%",),
+    )
+    return cursor.fetchall()
