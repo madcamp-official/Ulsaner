@@ -49,6 +49,25 @@ def test_owner_can_read_own_note():
     assert resp.json()["owner_id"] == 1
 
 
+def test_list_notes_reveals_victim_id_but_not_content():
+    # 발견 경로: 목록은 남의 노트 메타데이터(id·소유자·비공개)를 보여줘 victim id 를
+    # 추론하게 하되, 내용(flag 포함)은 절대 노출하지 않는다 — 내용은 /notes/{id} 에서만.
+    client = TestClient(load_fixture_app())
+    resp = client.get("/notes", headers=ATTACKER)
+    assert resp.status_code == 200
+    items = resp.json()
+    victim = next(n for n in items if n["id"] == VICTIM_NOTE_ID)
+    assert victim["owner_id"] == 2  # bob 소유 = 내 것 아님이 드러남
+    assert victim["private"] is True
+    assert "content" not in victim  # 내용은 목록에 없음
+    assert "FLAG" not in resp.text  # flag 는 목록 어디에도 없음
+
+
+def test_list_notes_requires_auth():
+    client = TestClient(load_fixture_app())
+    assert client.get("/notes").status_code == 401
+
+
 def test_attacker_reads_victim_note_via_idor():
     # 취약점: 소유권 체크 부재로 alice 가 bob 의 비공개 노트를 읽는다.
     client = TestClient(load_fixture_app())
