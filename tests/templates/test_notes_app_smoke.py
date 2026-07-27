@@ -27,7 +27,7 @@ def test_template_app_serves_notes_when_owner_requests():
         last_error = None
         while time.time() < deadline:
             try:
-                resp = requests.get(f"http://localhost:{port}/notes/1", headers={"X-User-Token": "token-alice"}, timeout=1)
+                resp = requests.get(f"http://localhost:{port}/notes/1", headers={"Authorization": "Bearer token-alice"}, timeout=1)
                 assert resp.status_code == 200
                 assert "FLAG" in resp.text
                 return

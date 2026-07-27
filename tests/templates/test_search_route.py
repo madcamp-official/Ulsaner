@@ -26,5 +26,5 @@ def test_note_by_id_route_is_still_reachable_after_adding_search():
     # regression guard for the /notes/{note_id} vs /notes/search route-ordering
     # gotcha: /notes/{note_id} must not swallow /notes/search, and vice versa
     # /notes/search must not swallow numeric note ids.
-    resp = client.get("/notes/1", headers={"X-User-Token": "token-alice"})
+    resp = client.get("/notes/1", headers={"Authorization": "Bearer token-alice"})
     assert resp.status_code == 200
