@@ -1,0 +1,62 @@
+diff --git a/surface/graph.py b/surface/graph.py
+index 9c0491c..c41be39 100644
+--- a/surface/graph.py
++++ b/surface/graph.py
+@@ -23,7 +23,7 @@ from pathlib import Path
+ 
+ from pydantic import BaseModel
+ 
+-from surface.roles import references_current_user
++from surface.roles import current_user_scopes_ownership, references_current_user
+ from surface.routes import _class_prefix_and_name, _join
+ 
+ # --- 경로/시그니처의 자원 id 신호 ---
+@@ -244,8 +244,9 @@ def _analyze(path, name, signature, body, *, stack, file_rel) -> IdorSuspect | N
+     if not id_addr:
+         return None
+ 
+-    # 현재 사용자를 참조하면 소유권 스코프 가능 → 의심 아님
+-    if references_current_user(f"{signature}\n{body}"):
++    # 현재 사용자를 소유권 스코프에 실제로 쓰면 → 의심 아님. 단, 시그니처에 주입만 되고
++    # 본문에서 안 쓰이면 인증일 뿐 인가가 아니므로 의심 유지(IDOR 프리필터 맹점 수정).
++    if current_user_scopes_ownership(signature or "", body or ""):
+         return None
+ 
+     id_param = _id_name(path or "", signature or "") or ""
+diff --git a/surface/roles.py b/surface/roles.py
+index ed2ca9f..dd3223e 100644
+--- a/surface/roles.py
++++ b/surface/roles.py
+@@ -37,3 +37,32 @@ _CU_RE = re.compile("|".join(_CURRENT_USER_PATTERNS), re.IGNORECASE)
+ def references_current_user(handler_text: str) -> bool:
+     """handler 시그니처+본문에 인증 사용자 참조가 있으면 True(=소유권 스코프 가능)."""
+     return bool(_CU_RE.search(handler_text))
++
++
++# `user=Depends(get_current_user)` / `current_user: User = Depends(...)` 처럼 현재 사용자를
++# **주입만 하는** 파라미터의 변수명을 잡는다. 주입 자체는 인증(로그인 확인)이지, 그 값을
++# 실제로 소유권 검사에 써야 인가다.
++_CU_DEPENDS_PARAM = re.compile(
++    r"(\w+)\s*(?::[^,)=]+)?=\s*Depends\(\s*[^)]*(?:get_current_user|current_user)[^)]*\)"
++)
++
++
++def current_user_scopes_ownership(signature: str, body: str) -> bool:
++    """현재 사용자 참조가 소유권 스코프에 **실제로 쓰이는지** 판정(인증 vs 인가 구분).
++
++    기존 `references_current_user`는 시그니처/본문 어디든 관용구가 보이면 "방어됨"으로 봤다.
++    그러나 `def get_note(note_id, user=Depends(get_current_user))`처럼 현재 사용자를
++    **주입만 하고 본문에서 그 변수를 전혀 쓰지 않으면** 소유권 검사가 없는 IDOR다
++    (인증O·인가X). 그런 handler를 방어로 오분류하면 프리필터가 후보를 놓친다.
++
++    판정: 본문이 현재사용자 관용구를 직접 쓰면 스코프로 본다. 그 외에 시그니처가
++    Depends 주입만 하면, 주입 변수가 본문에서 참조될 때만 스코프로 인정한다. Depends가
++    아닌 시그니처 참조(예: Java `@AuthenticationPrincipal`)는 종전대로 방어로 둔다.
++    """
++    if references_current_user(body):
++        return True
++    m = _CU_DEPENDS_PARAM.search(signature)
++    if m:
++        var = m.group(1)
++        return re.search(rf"\b{re.escape(var)}\b", body) is not None
++    return references_current_user(signature)
