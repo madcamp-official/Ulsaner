@@ -16,6 +16,16 @@
 > `platform/` 는 파이썬 stdlib `platform` 과 이름이 겹치므로, 실제 임포트 패키지는
 > `platform/ulsaner_platform/` 로 한 단계 중첩돼 있다(섀도잉 방지).
 
+## 데모 실행 (플랫폼)
+
+Docker 데몬이 떠 있는 상태에서:
+
+```bash
+./scripts/demo.sh
+```
+
+사전점검 → 이미지·임포트 예열 → 서버 기동 → 브라우저로 훈련장(`/`)을 연다. 데모 시나리오·트러블슈팅은 [`docs/running-the-platform.md`](docs/running-the-platform.md), 엔진 실행은 [`docs/running-the-engine.md`](docs/running-the-engine.md) 참고.
+
 ## 개발 세팅
 
 ```bash
