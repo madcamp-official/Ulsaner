@@ -30,3 +30,24 @@ def test_search_notes_by_title_returns_only_public_matches():
 def test_search_notes_by_title_excludes_private_notes_even_when_title_matches():
     rows = db.search_notes_by_title("private")
     assert rows == []
+
+
+def test_list_notes_in_workspace_returns_every_note_sharing_the_workspace():
+    notes = db.list_notes_in_workspace(100)
+    ids = sorted(n.id for n in notes)
+    assert ids == [1, 2]
+
+
+def test_list_notes_in_workspace_returned_notes_are_real_note_objects():
+    notes = db.list_notes_in_workspace(100)
+    private_note = next(n for n in notes if n.id == 1)
+    assert private_note.owner_id == 1
+    assert private_note.is_private is True
+    assert private_note.title == "private"
+    # the Note object itself still carries body (db-layer has no reason to strip
+    # data); redacting body/flag is the route layer's job (Step 3), not db.py's.
+    assert private_note.body == "FLAG{example}"
+
+
+def test_list_notes_in_workspace_returns_empty_list_for_an_unknown_workspace():
+    assert db.list_notes_in_workspace(999) == []
