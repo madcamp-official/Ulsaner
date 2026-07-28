@@ -9,6 +9,7 @@ from . import manifest as manifest_mod
 from .slots.base import Slot
 
 TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "notes_app"
+TICKETS_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "tickets_app"
 SCHEMA_PATH = pathlib.Path(__file__).parent.parent / "contract" / "manifest_schema.json"
 
 _EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
@@ -30,31 +31,39 @@ def generate_bundle(
     task_prompt: str,
     solution_summary: str,
     max_attempts: int = 3,
+    template_dir: pathlib.Path = TEMPLATE_DIR,
+    seed_data_builder: Callable[[random.Random], tuple[dict, str]] = params.build_seed_data,
+    exploit_builders: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] | None = None,
+    reorder_var_name: str = "note",
+    health_check_path: str = "/notes/2",
 ) -> pathlib.Path:
+    if exploit_builders is None:
+        exploit_builders = _EXPLOIT_BUILDERS
     for attempt in range(max_attempts):
         rng = random.Random(seed + attempt)
-        seed_data, flag = params.build_seed_data(rng)
+        seed_data, flag = seed_data_builder(rng)
         slot = slot_builder()
 
         app_dir = output_dir / "app"
         if app_dir.exists():
             shutil.rmtree(app_dir)
-        injector.inject(TEMPLATE_DIR, app_dir, slot)
+        injector.inject(template_dir, app_dir, slot)
         if slot.tier == "hard":
             new_var_name = f"n{rng.getrandbits(16):04x}"
             injector.apply_extra_transform(
                 app_dir,
                 slot.target_file,
-                lambda module: reorder.rename_local_variable(module, slot.target_function, "note", new_var_name),
+                lambda module: reorder.rename_local_variable(
+                    module, slot.target_function, reorder_var_name, new_var_name
+                ),
             )
         params.write_seed_data(app_dir, seed_data)
 
-        build_exploit = _EXPLOIT_BUILDERS[slot.vuln_type]
+        build_exploit = exploit_builders[slot.vuln_type]
         exploit = build_exploit(seed_data, flag)
         tag = f"ulsaner-bundle-{seed}-{attempt}"
 
-        if verifier.verify_bundle(app_dir, exploit, tag):
-            # Write reference exploit
+        if verifier.verify_bundle(app_dir, exploit, tag, health_check_path):
             exploits_dir = output_dir / "exploits"
             exploits_dir.mkdir(parents=True, exist_ok=True)
             exploit_json_path = exploits_dir / "reference.json"
