@@ -44,13 +44,45 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 :root { --color-accent: #b0483a; --color-accent-2: #b0483a; }
 @keyframes ul-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.15; } }
 @keyframes ul-rise { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+/* 하단 오리 마스코트: 나쁜 오리(duck2)는 자동으로 좌우를 걸어다니고,
+   이동 방향에 맞춰 좌우반전된다(원본은 왼쪽을 본다). 일반 오리(duck1)는
+   자동 애니메이션 대신 마우스 x좌표를 따라가도록 JS로 제어한다(아래 script). */
+@keyframes duck-walk-2 {
+  0%    { transform: translateX(0)      scaleX(1); }
+  49.9% { transform: translateX(-140px) scaleX(1); }
+  50%   { transform: translateX(-140px) scaleX(-1); }
+  99.9% { transform: translateX(0)      scaleX(-1); }
+  100%  { transform: translateX(0)      scaleX(1); }
+}
 </style>
 </head>
 <body>
 <div id="app" style="min-height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);"></div>
 
+<div aria-hidden="true" style="position:fixed;left:0;right:0;bottom:0;height:100px;pointer-events:none;overflow:hidden;z-index:1;">
+  <img id="duck-normal" src="/assets/duck1.png" alt="" style="position:absolute;left:22%;bottom:0;height:78px;width:auto;image-rendering:pixelated;transform-origin:center bottom;transition:left 0.25s ease-out, transform 0.2s ease-out;" />
+  <img src="/assets/duck2.png" alt="" style="position:absolute;left:58%;bottom:0;height:88px;width:auto;image-rendering:pixelated;animation:duck-walk-2 8.5s ease-in-out infinite;transform-origin:center bottom;" />
+</div>
+
 <script>
 "use strict";
+// 일반 오리(duck-normal)는 자동 애니메이션 없이 마우스 x좌표를 따라간다.
+// 나쁜 오리(duck2)는 CSS duck-walk-2 애니메이션으로 계속 자동으로 걷는다.
+(function () {
+  const duck = document.getElementById("duck-normal");
+  if (!duck) return;
+  let lastX = null;
+  document.addEventListener("mousemove", (e) => {
+    const w = duck.offsetWidth || 60;
+    const maxLeft = Math.max(0, window.innerWidth - w);
+    const left = Math.max(0, Math.min(maxLeft, e.clientX - w / 2));
+    if (lastX !== null && Math.abs(e.clientX - lastX) > 1) {
+      duck.style.transform = e.clientX > lastX ? "scaleX(-1)" : "scaleX(1)";
+    }
+    lastX = e.clientX;
+    duck.style.left = left + "px";
+  });
+})();
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const pad2 = (n) => String(n).padStart(2, "0");

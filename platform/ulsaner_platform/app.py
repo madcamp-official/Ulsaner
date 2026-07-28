@@ -21,6 +21,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from orchestrator.runner import OrchestratorError
@@ -166,6 +167,7 @@ def create_app(
         version="0.2.0",
         lifespan=lifespan,
     )
+    app.mount("/assets", StaticFiles(directory=_STATIC_DIR / "assets"), name="assets")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
