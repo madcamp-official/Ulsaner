@@ -143,8 +143,163 @@ def cmd_gen(args) -> None:
         print(f"  {e['vuln_class']}-{e['tier']}-{e['seed']}: flag={e['flag']}")
 
 
-def cmd_audit(args) -> None:  # 실제 구현은 Task 3 에서 채운다.
-    raise NotImplementedError("cmd_audit is implemented in Task 3")
+def cmd_audit(args) -> None:
+    """Phase 2: VibeCutter 자체 venv 에서 실행. 각 앱을 uvicorn 기동 → VibeCutter
+    탐지·검증 + Ulsaner 레퍼런스 익스플로잇(독립 ground truth) → 정리. 결과를
+    benchmark-result.json 과 동일한 리치 스키마로 <out> 에 쓴다.
+
+    지표(클래스 독립):
+      vc_detected_stock/fixed : VibeCutter 정적 스캐너 후보 생성 여부(IDOR=prefilter,
+                                SQLi=injection prefilter)
+      vc_verified             : VibeCutter 자체 verifier 재현·확정 여부
+      exploitable             : Ulsaner 레퍼런스 익스플로잇이 flag 를 뽑았는가(독립 GT)
+      solved(=results)        : vc_detected_fixed AND vc_verified
+    """
+    import socket
+    import subprocess
+    import time
+
+    vc_root = os.environ.get("VC_ROOT", _DEFAULT_VC_ROOT)
+    vcvenv_py = os.environ.get("VCVENV_PY", _DEFAULT_VCVENV_PY)
+    sys.path.insert(0, str(vc_root))
+
+    import httpx
+    from contracts.schemas import Candidate
+    from runtime.provisioning import VerifierProvisioning, ProvisioningStrategy
+    from verifiers.access_control import verify as verify_idor
+    from verifiers.injection import verify as verify_sqli
+    import surface.candidates as SC
+    import surface.graph as G
+    from surface.roles import references_current_user
+
+    workdir = Path(args.workdir).resolve()
+    out = Path(args.out)
+    index = json.loads((workdir / "index.json").read_text())
+
+    def free_port() -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
+    def wait_health(port: int, timeout=15.0) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                if httpx.get(f"http://127.0.0.1:{port}/openapi.json", timeout=1.0).status_code == 200:
+                    return True
+            except Exception:
+                time.sleep(0.3)
+        return False
+
+    def idor_detected(app_dir: str, stock: bool) -> bool:
+        orig = G.current_user_scopes_ownership
+        if stock:
+            G.current_user_scopes_ownership = (
+                lambda sig, body: references_current_user(f"{sig}\n{body}")
+            )
+        try:
+            return any(s.handler == "get_note" for s in G.find_idor_suspects(app_dir))
+        finally:
+            G.current_user_scopes_ownership = orig
+
+    def audit_idor(e, port):
+        base = f"http://127.0.0.1:{port}"
+        det_stock = idor_detected(e["app_dir"], stock=True)
+        det_fixed = idor_detected(e["app_dir"], stock=False)
+        os.environ["VIBECUTTER_BENCH_TOK"] = e["attacker_token"]
+        cand = Candidate(
+            id=f"bench-{e['seed']}", run_id=f"bench-{e['seed']}", cwe="CWE-639",
+            vuln_class="idor", endpoint="/notes/{id}",
+            attack_params={
+                "base_url": base, "auth_mode": "bearer_fixture",
+                "baseline_path": e["baseline_path"], "attack_path": e["attack_path"],
+                "victim_marker": e["victim_marker"], "owner_marker": e["owner_marker"],
+                "baseline_token_env": "VIBECUTTER_BENCH_TOK",
+            },
+        )
+        vc_verified = verify_idor(cand.run_id, cand, max_requests=8).verified
+        r = httpx.get(f"{base}{e['attack_path']}",
+                      headers={"Authorization": f"Bearer {e['attacker_token']}"}, timeout=5)
+        exploitable = e["flag"] in r.text
+        return det_stock, det_fixed, vc_verified, exploitable
+
+    def audit_sqli(e, port):
+        base = f"http://127.0.0.1:{port}"
+        prov = VerifierProvisioning(target_id=f"bench-{e['seed']}", base_url=base,
+                                    auth_mode="none", strategy=ProvisioningStrategy.SELF_SIGNUP,
+                                    notes="bench")
+        bridge = SC.injection_xss_candidates(f"bench-{e['seed']}", prov, e["app_dir"])
+        sqli_cands = [c for c in bridge.candidates
+                      if (c.vuln_class or "").lower() in ("sqli", "injection")]
+        detected = len(sqli_cands) > 0
+        if detected:
+            vc_verified = verify_sqli(f"bench-{e['seed']}", sqli_cands[0], max_requests=12).verified
+        else:
+            cand = Candidate(
+                id=f"bench-{e['seed']}", run_id=f"bench-{e['seed']}", cwe="CWE-89",
+                vuln_class="sqli", endpoint=e["inject_path"],
+                attack_params={"base_url": base, "inject_path": e["inject_path"],
+                               "inject_param": e["inject_param"], "inject_method": "GET",
+                               "inject_location": "query", "baseline_value": "a"},
+            )
+            vc_verified = verify_sqli(f"bench-{e['seed']}", cand, max_requests=12).verified
+        # 독립 ground truth: 레퍼런스 익스플로잇의 전체 path 를 그대로 때린다(재구성 불필요).
+        r = httpx.get(f"{base}{e['exploit_path']}", timeout=5)
+        exploitable = e["flag"] in r.text
+        # sqli 는 stock/fixed 구분이 없다 — detected 를 두 번 반환(원본 하네스와 동일).
+        return detected, detected, vc_verified, exploitable
+
+    rows = []
+    for e in index:
+        port = free_port()
+        proc = subprocess.Popen(
+            [vcvenv_py, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(port)],
+            cwd=e["app_dir"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        try:
+            if not wait_health(port):
+                raise RuntimeError(f"app {e['vuln_class']}-{e['tier']}-{e['seed']} 기동 실패")
+            fn = audit_idor if e["vuln_class"] == "idor" else audit_sqli
+            det_stock, det_fixed, vc_verified, exploitable = fn(e, port)
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                proc.kill()
+        rows.append({
+            "vuln_class": e["vuln_class"], "tier": e["tier"], "seed": e["seed"],
+            "vc_detected_stock": det_stock, "vc_detected_fixed": det_fixed,
+            "vc_verified": vc_verified, "exploitable": exploitable,
+            "solved_stock": det_stock and vc_verified,
+            "solved_fixed": det_fixed and vc_verified,
+        })
+        print(f"  {e['vuln_class']}-{e['tier']}-{e['seed']}: "
+              f"detected(stock={det_stock},fixed={det_fixed}) vc_verified={vc_verified} "
+              f"exploitable={exploitable} → solved_fixed={rows[-1]['solved_fixed']}")
+
+    rate = lambda rs: round(sum(rs) / len(rs), 4) if rs else 0.0
+    by_class = {}
+    for r in rows:
+        by_class.setdefault(f"{r['vuln_class']}-{r['tier']}", []).append(r["solved_fixed"])
+    result = {
+        "_comment": (
+            "VibeCutter(자동 보안도구)가 Ulsaner 생성 취약 인스턴스를 잡는 비율. "
+            "results/success_rate 는 IDOR prefilter 인가맹점 수정 적용(fixed) 기준. "
+            "exploitable=Ulsaner 레퍼런스 익스플로잇이 flag 를 뽑은 독립 ground truth — "
+            "미탐은 취약점 부재가 아니라 자동도구 한계다."
+        ),
+        "seeds": [r["seed"] for r in rows],
+        "results": [r["solved_fixed"] for r in rows],
+        "success_rate": rate([r["solved_fixed"] for r in rows]),
+        "success_rate_stock": rate([r["solved_stock"] for r in rows]),
+        "success_rate_by_class": {k: rate(v) for k, v in by_class.items()},
+        "detail": rows,
+    }
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    print(f"\nfixed={result['success_rate']} stock={result['success_rate_stock']} "
+          f"by_class={result['success_rate_by_class']} → {out}")
 
 
 def build_parser() -> argparse.ArgumentParser:
