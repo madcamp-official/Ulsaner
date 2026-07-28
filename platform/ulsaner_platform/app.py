@@ -69,14 +69,14 @@ DEFAULT_CHALLENGES: list[Challenge] = [
         name="easy-idor-live",
         vuln_type="idor",
         tier="easy",
-        task_prompt="당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요. (엔진 생성 · 매 인스턴스 랜덤 flag)",
+        task_prompt="당신은 bob 계정입니다. 다른 사용자(alice)의 비공개 노트를 읽어 flag 를 획득하세요. (엔진 생성 · 매 인스턴스 랜덤 flag, 스핀업 후 토큰 제공)",
         provision=engine_source("idor", "easy"),
     ),
     Challenge(
         name="hard-idor-live",
         vuln_type="idor",
         tier="hard",
-        task_prompt="당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요. (엔진 생성 · 존재하지만 틀린 권한 체크)",
+        task_prompt="당신은 bob 계정입니다. 다른 사용자(alice)의 비공개 노트를 읽어 flag 를 획득하세요. (엔진 생성 · 존재하지만 틀린 권한 체크, 스핀업 후 토큰 제공)",
         provision=engine_source("idor", "hard"),
     ),
     Challenge(
@@ -104,7 +104,7 @@ DEFAULT_CHALLENGES: list[Challenge] = [
         name="tickets-idor-live",
         vuln_type="idor",
         tier="easy",
-        task_prompt="당신은 alice 계정입니다. 다른 사용자의 기밀 티켓(description)을 읽어 flag 를 획득하세요. (2번째 템플릿 tickets_app · 엔진 생성)",
+        task_prompt="당신은 bob 계정입니다. 다른 사용자(alice)의 기밀 티켓(description)을 읽어 flag 를 획득하세요. (2번째 템플릿 tickets_app · 엔진 생성, 스핀업 후 토큰 제공)",
         provision=engine_source("idor", "easy", template="tickets"),
     ),
     Challenge(

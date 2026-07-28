@@ -30,18 +30,24 @@ class BundleGenerationError(Exception):
 
 
 def _resolve_task_prompt(task_prompt: str, seed_data: dict) -> str:
-    """task_prompt 의 ``{alice_token}`` placeholder 를 seed 의 alice(=id 1) 토큰으로 치환한다.
+    """task_prompt 의 ``{attacker_token}`` placeholder 를 seed 의 **공격자** 토큰으로 치환한다.
 
     인증형(idor) 챌린지는 인스턴스마다 토큰이 랜덤이라, 학생이 자기 자격증명을 얻을 통로가
-    필요하다. fixture 가 프롬프트로 'alice-token' 을 알려주는 것과 동일하게, 여기서 랜덤 토큰을
-    프롬프트에 채워 넣는다. 토큰은 alice 자신의 자격증명이므로 공개해도 flag(=bob 의 비공개
-    본문)는 새지 않는다. placeholder 가 없으면(인증 불필요한 sqli 등) 원문 그대로 반환한다.
+    필요하다. fixture 가 프롬프트로 자격증명을 알려주는 것과 동일하게 랜덤 토큰을 프롬프트에
+    채워 넣는다.
+
+    공개하는 것은 반드시 **공격자**(=flag 항목의 소유자가 아닌 사용자, 레퍼런스 익스플로잇의
+    users[1]) 토큰이어야 한다 — 피해자(flag 소유자) 토큰을 주면 학생이 '자기 노트'를 읽는 꼴이
+    되어 IDOR 가 성립하지 않는다. 공격자 토큰은 그 계정 자신의 자격증명이라 공개해도 flag
+    (=피해자의 비공개 본문)는 새지 않는다. placeholder 가 없으면(인증 불필요한 sqli 등) 원문 그대로.
     """
-    if "{alice_token}" not in task_prompt:
+    if "{attacker_token}" not in task_prompt:
         return task_prompt
     users = seed_data.get("users") or []
-    alice = next((u for u in users if u.get("id") == 1), users[0] if users else {})
-    return task_prompt.replace("{alice_token}", alice.get("token", ""))
+    items = seed_data.get("notes") or seed_data.get("tickets") or []
+    victim_id = items[0].get("owner_id") if items else None  # flag 항목의 소유자 = 피해자
+    attacker = next((u for u in users if u.get("id") != victim_id), users[0] if users else {})
+    return task_prompt.replace("{attacker_token}", attacker.get("token", ""))
 
 
 def generate_bundle(
