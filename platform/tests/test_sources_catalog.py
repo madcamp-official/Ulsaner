@@ -152,7 +152,17 @@ def test_default_challenges_expose_new_classes():
     names = {c.name for c in DEFAULT_CHALLENGES}
     assert {
         "hard-sqli-live",
-        "easy-xss-live",
         "tickets-idor-live",
         "tickets-sqli-live",
     } <= names
+
+
+def test_xss_wired_but_not_exposed_as_interactive_card():
+    # XSS 는 벤치마크용으로 배선만 남기고 인터랙티브 카드로는 내보내지 않는다
+    # (반사형이라 flag 제출 모델과 안 맞음 — app.py 주석 참고). 배선은 살아 있어야 한다.
+    from ulsaner_platform.app import DEFAULT_CHALLENGES
+
+    assert ("xss", "easy", "notes") in _SLOTS  # 엔진/벤치마크 경로용 배선 유지
+    names = {c.name for c in DEFAULT_CHALLENGES}
+    assert "easy-xss-live" not in names  # 인터랙티브 카드로는 미노출
+    assert not any(c.vuln_type == "xss" for c in DEFAULT_CHALLENGES)

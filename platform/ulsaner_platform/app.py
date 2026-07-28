@@ -93,13 +93,13 @@ DEFAULT_CHALLENGES: list[Challenge] = [
         task_prompt="고급 검색(GET /notes/search/advanced)의 exclude 파라미터로 비공개 노트를 유출하세요. 파라미터 바인딩처럼 보이지만 실제로는 문자열 보간됩니다. (엔진 생성 · 매 인스턴스 랜덤 flag)",
         provision=engine_source("hard_sqli", "hard"),
     ),
-    Challenge(
-        name="easy-xss-live",
-        vuln_type="xss",
-        tier="easy",
-        task_prompt="검색 결과 페이지(GET /notes/search/view)에 검색어가 이스케이프 없이 반사됩니다. <script> 페이로드가 그대로 반영됨을 증명하세요. (엔진 생성 · 반사형 XSS)",
-        provision=engine_source("xss", "easy"),
-    ),
+    # XSS(반사형)는 카탈로그에 노출하지 않는다 — 인터랙티브 'flag 제출' 모델과 안 맞는다.
+    # XSS 는 저장된 flag 를 유출하지 않고 반사만 증명하므로, 레퍼런스 익스플로잇이 스스로
+    # flag 를 페이로드에 실어 넣어야 성립한다(자가검증·VibeCutter 벤치마크에선 유효). 하지만
+    # flag(FLAG{...})는 인스턴스마다 랜덤·비공개라, 그것을 모르는 사람은 제출할 값을 얻을 수
+    # 없다. 그래서 engine.slots.xss + sources._SLOTS("xss","easy") 배선은 벤치마크용으로
+    # 남겨두되, 여기 카드로는 내보내지 않는다. 인터랙티브로 살리려면 submit 판정을 '반사 증명'
+    # 으로 바꾸는 별도 설계가 필요하다(향후 과제).
     Challenge(
         name="tickets-idor-live",
         vuln_type="idor",
