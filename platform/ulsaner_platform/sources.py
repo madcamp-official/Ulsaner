@@ -48,6 +48,12 @@ _SLOTS: dict[tuple[str, str], tuple[str, str, str, str]] = {
         "당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
         "소유권 비교 로직이 변형돼 정적분석으로는 잘 안 잡히는 IDOR(하드 티어).",
     ),
+    ("sqli", "easy"): (
+        "engine.slots.easy_sqli",
+        "build_easy_sqli_slot",
+        "노트 검색 기능(GET /notes/search?q=)에 SQL 인젝션이 있습니다. 비공개 노트에 심긴 flag 를 빼내세요.",
+        "검색 쿼리가 입력을 문자열로 이어붙여 SQL 인젝션이 가능하다 — UNION 으로 비공개 노트 본문 유출.",
+    ),
 }
 
 

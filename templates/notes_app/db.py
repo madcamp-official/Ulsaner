@@ -34,8 +34,9 @@ class Note:
         self.is_private = is_private
 
 
-def get_current_user(x_user_token: str = Header(...)) -> User:
-    raw = _USERS_BY_TOKEN.get(x_user_token)
+def get_current_user(authorization: str = Header(...)) -> User:
+    token = authorization[7:] if authorization.startswith("Bearer ") else authorization
+    raw = _USERS_BY_TOKEN.get(token)
     if raw is None:
         raise HTTPException(401, "invalid token")
     return User(**raw)

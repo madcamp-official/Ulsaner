@@ -16,7 +16,7 @@ def test_list_notes_requires_the_auth_header():
 
 
 def test_list_notes_rejects_an_unknown_token():
-    resp = client.get("/notes", headers={"X-User-Token": "not-a-real-token"})
+    resp = client.get("/notes", headers={"Authorization": "Bearer not-a-real-token"})
     assert resp.status_code == 401
 
 
@@ -24,7 +24,7 @@ def test_list_notes_reveals_the_victims_note_metadata_to_a_different_workspace_m
     # alice and bob share workspace_id=100; this is the "discovery" step of the
     # IDOR challenge: alice must be able to see that note id=1 exists, is
     # owned by someone else, and is private — without brute-forcing ids.
-    resp = client.get("/notes", headers={"X-User-Token": "token-alice"})
+    resp = client.get("/notes", headers={"Authorization": "Bearer token-alice"})
     assert resp.status_code == 200
     results = resp.json()
     ids = sorted(row["id"] for row in results)
@@ -34,7 +34,7 @@ def test_list_notes_reveals_the_victims_note_metadata_to_a_different_workspace_m
 
 
 def test_list_notes_never_exposes_body_or_the_flag_value():
-    resp = client.get("/notes", headers={"X-User-Token": "token-alice"})
+    resp = client.get("/notes", headers={"Authorization": "Bearer token-alice"})
     assert "FLAG" not in resp.text
     for row in resp.json():
         assert "body" not in row
@@ -44,7 +44,7 @@ def test_note_by_id_and_search_routes_still_reachable_after_adding_notes_list():
     # regression guard, same house style as test_search_route.py's
     # test_note_by_id_route_is_still_reachable_after_adding_search: adding a new
     # GET /notes (no path param) must not shadow /notes/{note_id} or /notes/search.
-    detail_resp = client.get("/notes/1", headers={"X-User-Token": "token-alice"})
+    detail_resp = client.get("/notes/1", headers={"Authorization": "Bearer token-alice"})
     assert detail_resp.status_code == 200
 
     search_resp = client.get("/notes/search", params={"q": "public"})

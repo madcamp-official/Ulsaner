@@ -78,6 +78,13 @@ DEFAULT_CHALLENGES: list[Challenge] = [
         task_prompt="당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요. (엔진 생성 · 존재하지만 틀린 권한 체크)",
         provision=engine_source("idor", "hard"),
     ),
+    Challenge(
+        name="easy-sqli-live",
+        vuln_type="sqli",
+        tier="easy",
+        task_prompt="노트 검색(GET /notes/search?q=)에 SQL 인젝션이 있습니다. 비공개 노트의 flag 를 빼내세요. (엔진 생성 · 매 인스턴스 랜덤 flag)",
+        provision=engine_source("sqli", "easy"),
+    ),
 ]
 
 
@@ -101,6 +108,18 @@ def _load_vibecutter(path: Path | None) -> tuple[float | None, dict | None]:
         "instances": len(results),
         "solved": sum(1 for r in results if r),
     }
+    # 확장 필드(멀티클래스 하네스가 채우면 노출, 없으면 기존 동작 유지 — 하위호환).
+    by_class = data.get("success_rate_by_class")
+    if isinstance(by_class, dict) and by_class:
+        detail["by_class"] = by_class
+    stock = data.get("success_rate_stock")
+    if stock is not None:
+        detail["stock_rate"] = float(stock)
+    rows = data.get("detail")
+    if isinstance(rows, list) and rows:
+        # exploitable = 실제로 취약(레퍼런스 익스플로잇 통과)인 인스턴스 수.
+        # 자동도구가 놓쳐도 취약점은 존재한다는 '사람 vs 자동도구' 대비의 핵심 수치.
+        detail["exploitable"] = sum(1 for r in rows if r.get("exploitable"))
     return float(rate), detail
 
 

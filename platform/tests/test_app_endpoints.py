@@ -59,6 +59,15 @@ def test_list_challenges_includes_metadata():
     assert "flag" not in item
 
 
+def test_default_catalog_includes_sqli_challenge():
+    # 기본 카탈로그(DEFAULT_CHALLENGES)에 엔진 sqli 챌린지가 노출된다(idor 외 2번째 종류).
+    client = TestClient(create_app(vibecutter_result_path=None))
+    items = client.get("/challenges").json()["available"]
+    sqli = next(c for c in items if c["name"] == "easy-sqli-live")
+    assert sqli["vuln_type"] == "sqli"
+    assert sqli["tier"] == "easy"
+
+
 def test_root_serves_dc_design():
     # 주 UI = Claude Design 핸드오프 재현본(다크 테크니컬).
     resp = make_client().get("/")
@@ -210,6 +219,33 @@ def test_stats_reports_vibecutter_when_result_file_present(tmp_path):
     stats = make_client(vibecutter_result_path=result).get("/stats").json()
     assert stats["vibecutter"] == 0.25
     assert stats["vibecutter_detail"] == {"instances": 4, "solved": 1}
+
+
+def test_stats_reports_vibecutter_rich_fields(tmp_path):
+    # 멀티클래스 하네스 형식이면 /stats 가 클래스별·stock·exploitable 확장 필드를 노출한다.
+    result = tmp_path / "vibecutter_result.json"
+    result.write_text(
+        json.dumps(
+            {
+                "seeds": [1, 2, 3],
+                "results": [True, False, False],
+                "success_rate": 0.3333,
+                "success_rate_stock": 0.0,
+                "success_rate_by_class": {"idor-easy": 1.0, "idor-hard": 0.0, "sqli-easy": 0.0},
+                "detail": [
+                    {"exploitable": True},
+                    {"exploitable": True},
+                    {"exploitable": True},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    det = make_client(vibecutter_result_path=result).get("/stats").json()["vibecutter_detail"]
+    assert det["instances"] == 3 and det["solved"] == 1
+    assert det["stock_rate"] == 0.0
+    assert det["by_class"] == {"idor-easy": 1.0, "idor-hard": 0.0, "sqli-easy": 0.0}
+    assert det["exploitable"] == 3  # 자동도구가 놓쳐도 3개 전부 실제 취약
 
 
 def test_stats_vibecutter_none_when_file_missing(tmp_path):
