@@ -54,6 +54,19 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
   99.9% { transform: translateX(0)      scaleX(-1); }
   100%  { transform: translateX(0)      scaleX(1); }
 }
+/* 일반 오리를 빠르게 움직이면 진행 방향 뒤로 흩날리는 먼지 입자.
+   컨테이너가 pointer-events:none·overflow:hidden 이라 클릭 방해 없이 하단 스트립에 갇힌다. */
+@keyframes duck-dust {
+  0%   { opacity: 0.5;  transform: translate(0, 0) scale(0.5); }
+  60%  { opacity: 0.32; }
+  100% { opacity: 0;    transform: translate(var(--dx, -16px), -12px) scale(1.7); }
+}
+.duck-dust {
+  position: absolute; border-radius: 50%;
+  background: color-mix(in srgb, #7c6f5e 55%, transparent);
+  pointer-events: none; will-change: transform, opacity;
+  animation: duck-dust 520ms ease-out forwards;
+}
 </style>
 </head>
 <body>
@@ -71,15 +84,43 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 (function () {
   const duck = document.getElementById("duck-normal");
   if (!duck) return;
-  let lastX = null;
+  const layer = duck.parentElement; // 하단 고정 스트립(pointer-events:none, overflow:hidden)
+  let lastX = null, lastT = 0, lastPuff = 0;
+
+  function spawnDust(cx, dir) {
+    // dir: +1 오른쪽으로 이동. 먼지는 진행 방향 반대(=뒤)로 깔린다.
+    const n = 2 + Math.floor(Math.random() * 2); // 2~3개
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement("div");
+      d.className = "duck-dust";
+      const jitter = Math.random() * 10 - 5;
+      const size = 6 + Math.random() * 7;
+      d.style.left = (cx - dir * (16 + Math.random() * 12) + jitter) + "px";
+      d.style.bottom = (2 + Math.random() * 8) + "px";
+      d.style.width = d.style.height = size + "px";
+      d.style.setProperty("--dx", (-dir * (14 + Math.random() * 18)) + "px");
+      d.style.animationDuration = (420 + Math.random() * 260) + "ms";
+      d.addEventListener("animationend", () => d.remove());
+      layer.appendChild(d);
+    }
+  }
+
   document.addEventListener("mousemove", (e) => {
+    const now = e.timeStamp || performance.now();
     const w = duck.offsetWidth || 60;
     const maxLeft = Math.max(0, window.innerWidth - w);
     const left = Math.max(0, Math.min(maxLeft, e.clientX - w / 2));
     if (lastX !== null && Math.abs(e.clientX - lastX) > 1) {
-      duck.style.transform = e.clientX > lastX ? "scaleX(-1)" : "scaleX(1)";
+      const dir = e.clientX > lastX ? 1 : -1;
+      duck.style.transform = dir > 0 ? "scaleX(-1)" : "scaleX(1)";
+      // 속도(px/ms). 빠르게 움직일 때만, 그리고 과하지 않게 스로틀링해서 먼지를 뿜는다.
+      const speed = Math.abs(e.clientX - lastX) / Math.max(1, now - lastT);
+      if (speed > 1.4 && now - lastPuff > 45) {
+        lastPuff = now;
+        spawnDust(left + w / 2, dir);
+      }
     }
-    lastX = e.clientX;
+    lastX = e.clientX; lastT = now;
     duck.style.left = left + "px";
   });
 })();
