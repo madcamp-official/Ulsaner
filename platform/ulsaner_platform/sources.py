@@ -59,13 +59,13 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
     ("idor", "easy", "notes"): _SlotSpec(
         "engine.slots.easy_idor",
         "build_easy_idor_slot",
-        "당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
+        "당신은 alice 계정입니다 (요청 헤더 Authorization: Bearer {alice_token}). 다른 사용자의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
         "노트 조회에서 소유권(owner) 검증이 빠져 있어 남의 비공개 노트를 읽을 수 있다(IDOR).",
     ),
     ("idor", "hard", "notes"): _SlotSpec(
         "engine.slots.hard_idor",
         "build_hard_idor_slot",
-        "당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
+        "당신은 alice 계정입니다 (요청 헤더 Authorization: Bearer {alice_token}). 다른 사용자의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
         "소유권 비교 로직이 변형돼 정적분석으로는 잘 안 잡히는 IDOR(하드 티어).",
     ),
     ("sqli", "easy", "notes"): _SlotSpec(
@@ -89,7 +89,7 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
     ("idor", "easy", "tickets"): _SlotSpec(
         "engine.slots.tickets",
         "build_tickets_easy_idor_slot",
-        "당신은 alice 계정입니다. 다른 사용자의 기밀 티켓(description)을 읽어 그 안에 심긴 flag 를 획득하세요.",
+        "당신은 alice 계정입니다 (요청 헤더 X-User-Token: {alice_token}). 다른 사용자의 기밀 티켓(description)을 읽어 그 안에 심긴 flag 를 획득하세요.",
         "티켓 조회에서 소유권(owner) 검증이 빠져 있어 남의 기밀 티켓을 읽을 수 있다(IDOR · 2번째 템플릿).",
         template="tickets",
         reorder_var_name="ticket",
@@ -98,7 +98,7 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
     ("idor", "hard", "tickets"): _SlotSpec(
         "engine.slots.tickets",
         "build_tickets_hard_idor_slot",
-        "당신은 alice 계정입니다. 다른 사용자의 기밀 티켓(description)을 읽어 그 안에 심긴 flag 를 획득하세요.",
+        "당신은 alice 계정입니다 (요청 헤더 X-User-Token: {alice_token}). 다른 사용자의 기밀 티켓(description)을 읽어 그 안에 심긴 flag 를 획득하세요.",
         "소유권 비교가 workspace 스코프로 뒤바뀌어 같은 workspace 면 통과되는 IDOR(하드 · 2번째 템플릿).",
         template="tickets",
         reorder_var_name="ticket",
