@@ -1,0 +1,10 @@
+{
+  "users": [
+    {"id": 1, "token": "token-alice", "name": "alice", "workspace_id": 100},
+    {"id": 2, "token": "token-bob", "name": "bob", "workspace_id": 100}
+  ],
+  "tickets": [
+    {"id": 1, "owner_id": 1, "workspace_id": 100, "subject": "private", "description": "FLAG{example}", "is_confidential": true},
+    {"id": 2, "owner_id": 2, "workspace_id": 100, "subject": "public", "description": "hello", "is_confidential": false}
+  ]
+}

@@ -80,3 +80,9 @@ def search_notes_by_title(q: str) -> list[tuple]:
         (f"%{q}%",),
     )
     return cursor.fetchall()
+
+
+def search_notes_advanced(q: str, exclude: str = "") -> list[tuple]:
+    query = "SELECT id, title FROM notes WHERE is_private = 0 AND title LIKE ? AND title != ?"
+    cursor = _NOTES_DB.execute(query, (f"%{q}%", exclude))
+    return cursor.fetchall()

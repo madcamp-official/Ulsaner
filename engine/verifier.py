@@ -30,12 +30,12 @@ def _stop_container(container_id: str) -> None:
     subprocess.run(["docker", "rm", "-f", container_id], check=True, capture_output=True)
 
 
-def _wait_for_health(port: int, timeout: float = 10.0) -> None:
+def _wait_for_health(port: int, path: str = "/notes/2", timeout: float = 10.0) -> None:
     deadline = time.time() + timeout
     last_error = None
     while time.time() < deadline:
         try:
-            requests.get(f"http://localhost:{port}/notes/2", timeout=1)
+            requests.get(f"http://localhost:{port}{path}", timeout=1)
             return
         except requests.RequestException as e:
             last_error = e
@@ -53,12 +53,17 @@ def _run_exploit(port: int, exploit: ReferenceExploit) -> bool:
     return exploit.expected_flag in response.text
 
 
-def verify_bundle(app_dir: pathlib.Path, exploit: ReferenceExploit, tag: str) -> bool:
+def verify_bundle(
+    app_dir: pathlib.Path,
+    exploit: ReferenceExploit,
+    tag: str,
+    health_check_path: str = "/notes/2",
+) -> bool:
     port = _free_port()
     _build_image(app_dir, tag)
     container_id = _run_container(tag, port)
     try:
-        _wait_for_health(port)
+        _wait_for_health(port, health_check_path)
         return _run_exploit(port, exploit)
     finally:
         _stop_container(container_id)

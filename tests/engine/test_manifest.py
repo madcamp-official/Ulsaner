@@ -42,3 +42,24 @@ def test_write_manifest_validates_against_schema(tmp_path):
 def test_write_manifest_rejects_invalid_manifest(tmp_path):
     with pytest.raises(jsonschema.ValidationError):
         write_manifest(tmp_path, {"id": "only-id"}, SCHEMA_PATH)
+
+
+def _validate_vuln_type(vuln_type: str) -> None:
+    schema = json.loads(SCHEMA_PATH.read_text())
+    m = build_manifest(
+        vuln_type=vuln_type,
+        tier="hard" if vuln_type == "hard_sqli" else "easy",
+        flag="FLAG{deadbeef}",
+        task_prompt="x",
+        reference_exploit_path="exploits/reference.json",
+        solution_summary="y",
+    )
+    jsonschema.validate(m, schema)
+
+
+def test_schema_accepts_hard_sqli_vuln_type():
+    _validate_vuln_type("hard_sqli")
+
+
+def test_schema_accepts_xss_vuln_type():
+    _validate_vuln_type("xss")
