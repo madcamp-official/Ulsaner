@@ -119,3 +119,47 @@ def test_generate_easy_sqli_bundle_e2e(tmp_path):
     db_code = (result / "app" / "db.py").read_text()
     assert "LIKE ?" not in db_code
     assert "LIKE '%{q}%'" in db_code
+
+
+from engine.slots.hard_sqli import build_hard_sqli_slot
+
+
+@pytest.mark.integration
+def test_generate_hard_sqli_bundle_e2e(tmp_path):
+    import json
+    output_dir = tmp_path / "bundle-hard-sqli"
+    result = generate_bundle(
+        seed=7,
+        output_dir=output_dir,
+        slot_builder=build_hard_sqli_slot,
+        task_prompt="검색 고급 필터(GET /notes/search/advanced)의 exclude 파라미터로 비공개 노트 본문을 유출해 flag를 찾아라",
+        solution_summary="search_notes_advanced의 exclude 값이 파라미터 바인딩 대신 문자열 보간되는 결함(prepared statement 위장)을 UNION 인젝션으로 악용",
+    )
+    assert (result / "manifest.json").exists()
+    assert (result / "app" / "seed_data.json").exists()
+    assert (result / "app" / "Dockerfile").exists()
+
+    exploit_path = result / "exploits" / "reference.json"
+    assert exploit_path.exists()
+    with open(exploit_path) as f:
+        exploit_data = json.load(f)
+    assert exploit_data["method"] == "GET"
+    assert exploit_data["path"].startswith("/notes/search/advanced?q=&exclude=")
+    assert exploit_data["headers"] == {}
+    assert isinstance(exploit_data["expected_flag"], str)
+    assert len(exploit_data["expected_flag"]) > 0
+
+    manifest = json.loads((result / "manifest.json").read_text())
+    assert manifest["vuln_type"] == "hard_sqli"
+    assert manifest["tier"] == "hard"
+
+    # the vulnerable interpolation is really present (transform ran)
+    db_code = (result / "app" / "db.py").read_text()
+    assert "title != '{exclude}'" in db_code
+    assert ", exclude)" not in db_code
+    # CROSS-CONTAMINATION: easy_sqli's target (search_notes_by_title) untouched...
+    assert "LIKE ?" in db_code
+    assert "LIKE '%{q}%'" not in db_code
+    # ...and the idor slot's target (routes/notes.py ownership check) intact
+    notes_routes_code = (result / "app" / "routes" / "notes.py").read_text()
+    assert "note.owner_id != user.id" in notes_routes_code
