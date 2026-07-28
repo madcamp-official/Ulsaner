@@ -35,7 +35,7 @@ def test_gen_sqli_hard_uses_advanced_endpoint(tmp_path):
     assert e["seed"] == 4401  # sqli-hard base seed (new, non-colliding block)
     assert e["exploit_path"].startswith("/notes/search/advanced?q=&exclude=")
     assert e["inject_path"] == "/notes/search/advanced"
-    assert e["inject_param"] == "q"
+    assert e["inject_param"] == "exclude"
 
 
 def test_gen_idor_index_shape(tmp_path):

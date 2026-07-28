@@ -69,9 +69,9 @@ def _class_registry() -> dict:
         "idor-easy": {"builder": build_easy_idor_slot, "base_seed": 1101, "kind": "idor"},
         "idor-hard": {"builder": build_hard_idor_slot, "base_seed": 2201, "kind": "idor"},
         "sqli-easy": {"builder": build_easy_sqli_slot, "base_seed": 3301, "kind": "sqli",
-                      "exploit": build_sqli_exploit},
+                      "exploit": build_sqli_exploit, "inject_param": "q"},
         "sqli-hard": {"builder": build_hard_sqli_slot, "base_seed": 4401, "kind": "sqli",
-                      "exploit": build_hard_sqli_exploit},
+                      "exploit": build_hard_sqli_exploit, "inject_param": "exclude"},
     }
 
 
@@ -125,7 +125,7 @@ def generate_apps(workdir, classes: list[str], seeds_per_class: int = 5) -> list
                 entry.update({
                     "exploit_path": exploit.path,               # 독립 ground-truth 용
                     "inject_path": exploit.path.split("?", 1)[0],  # VC 폴백 후보 구성용
-                    "inject_param": "q",                         # easy/hard 공통 1차 쿼리 파라미터
+                    "inject_param": spec["inject_param"],        # 클래스별 실제 취약 파라미터
                 })
             index.append(entry)
 
