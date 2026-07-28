@@ -22,6 +22,7 @@ import secrets
 import shutil
 import tempfile
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 # provision() -> (bundle_dir, cleanup)
@@ -32,27 +33,85 @@ def _noop() -> None:
     """fixture 처럼 정리할 임시 디렉토리가 없을 때의 기본 정리 콜백."""
 
 
-# (vuln_type, tier) -> (슬롯 빌더가 있는 모듈, 빌더 함수명, task_prompt, solution_summary).
-# 엔진(libcst 등 무거운 AST 툴체인)은 여기서 임포트하지 않고, 실제로 실번들을 생성할 때만
-# 지연 임포트한다 — 플랫폼(검증 서비스·/stats·fixture 스핀업)이 엔진 임포트에 묶이지 않도록.
-_SLOTS: dict[tuple[str, str], tuple[str, str, str, str]] = {
-    ("idor", "easy"): (
+@dataclass(frozen=True)
+class _SlotSpec:
+    """카탈로그 엔트리 하나 → generate_bundle 을 어떻게 부를지의 명세.
+
+    엔진(engine.bundle)의 무거운 심볼(TICKETS_TEMPLATE_DIR·EXPLOIT_BUILDERS 등)은 여기
+    담지 않고, template 선택자("notes"|"tickets")만 문자열로 둔다. 실제 엔진 심볼은
+    provision() 실행 시점(=실번들 생성 시점)에만 지연 해석한다 — 플랫폼(검증 서비스·
+    /stats·fixture 스핀업)이 libcst 등 엔진 임포트 경로에 묶이지 않도록.
+    """
+
+    module_path: str  # 슬롯 빌더가 있는 모듈
+    builder_attr: str  # 빌더 함수명
+    task_prompt: str
+    solution_summary: str
+    template: str = "notes"  # "notes" | "tickets" — 어떤 템플릿 앱에 주입하는가
+    reorder_var_name: str = "note"  # 하드 티어 지역변수 리네임 대상(tickets 는 "ticket")
+    health_check_path: str = "/notes/2"  # 자가검증 기동 대기용 헬스 경로
+
+
+# (vuln_type, tier, template) -> _SlotSpec.
+# template 축을 키에 둔 이유: tickets_app 의 idor-easy/hard·sqli-easy 가 notes 의 같은
+# (vuln_type, tier) 와 충돌하기 때문 — 두 번째 템플릿을 별도 카탈로그 엔트리로 노출한다.
+_SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
+    ("idor", "easy", "notes"): _SlotSpec(
         "engine.slots.easy_idor",
         "build_easy_idor_slot",
         "당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
         "노트 조회에서 소유권(owner) 검증이 빠져 있어 남의 비공개 노트를 읽을 수 있다(IDOR).",
     ),
-    ("idor", "hard"): (
+    ("idor", "hard", "notes"): _SlotSpec(
         "engine.slots.hard_idor",
         "build_hard_idor_slot",
         "당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
         "소유권 비교 로직이 변형돼 정적분석으로는 잘 안 잡히는 IDOR(하드 티어).",
     ),
-    ("sqli", "easy"): (
+    ("sqli", "easy", "notes"): _SlotSpec(
         "engine.slots.easy_sqli",
         "build_easy_sqli_slot",
         "노트 검색 기능(GET /notes/search?q=)에 SQL 인젝션이 있습니다. 비공개 노트에 심긴 flag 를 빼내세요.",
         "검색 쿼리가 입력을 문자열로 이어붙여 SQL 인젝션이 가능하다 — UNION 으로 비공개 노트 본문 유출.",
+    ),
+    ("hard_sqli", "hard", "notes"): _SlotSpec(
+        "engine.slots.hard_sqli",
+        "build_hard_sqli_slot",
+        "고급 검색(GET /notes/search/advanced)의 exclude 파라미터로 비공개 노트 본문을 유출해 flag 를 찾으세요.",
+        "exclude 값이 파라미터 바인딩처럼 보이지만 실제로는 문자열 보간된다(prepared statement 위장) — UNION 인젝션으로 유출.",
+    ),
+    ("xss", "easy", "notes"): _SlotSpec(
+        "engine.slots.xss",
+        "build_xss_slot",
+        "검색 결과 페이지(GET /notes/search/view)에 검색어가 이스케이프 없이 반사됩니다. <script> 페이로드가 원문 그대로 반영됨을 증명하세요(반사형 XSS).",
+        "search_notes_view 가 검색어 q 를 html.escape 없이 HTML 에 삽입 — <script> 페이로드가 그대로 반사된다.",
+    ),
+    ("idor", "easy", "tickets"): _SlotSpec(
+        "engine.slots.tickets",
+        "build_tickets_easy_idor_slot",
+        "당신은 alice 계정입니다. 다른 사용자의 기밀 티켓(description)을 읽어 그 안에 심긴 flag 를 획득하세요.",
+        "티켓 조회에서 소유권(owner) 검증이 빠져 있어 남의 기밀 티켓을 읽을 수 있다(IDOR · 2번째 템플릿).",
+        template="tickets",
+        reorder_var_name="ticket",
+        health_check_path="/tickets/2",
+    ),
+    ("idor", "hard", "tickets"): _SlotSpec(
+        "engine.slots.tickets",
+        "build_tickets_hard_idor_slot",
+        "당신은 alice 계정입니다. 다른 사용자의 기밀 티켓(description)을 읽어 그 안에 심긴 flag 를 획득하세요.",
+        "소유권 비교가 workspace 스코프로 뒤바뀌어 같은 workspace 면 통과되는 IDOR(하드 · 2번째 템플릿).",
+        template="tickets",
+        reorder_var_name="ticket",
+        health_check_path="/tickets/2",
+    ),
+    ("sqli", "easy", "tickets"): _SlotSpec(
+        "engine.slots.tickets",
+        "build_tickets_easy_sqli_slot",
+        "티켓 검색(GET /tickets/search?q=)에 SQL 인젝션이 있습니다. 비공개 티켓에 심긴 flag 를 빼내세요.",
+        "검색 쿼리가 입력을 문자열로 이어붙여 SQL 인젝션이 가능하다 — UNION 으로 기밀 티켓 본문 유출(2번째 템플릿).",
+        template="tickets",
+        reorder_var_name="ticket",
+        health_check_path="/tickets/2",
     ),
 }
 
@@ -67,22 +126,43 @@ def fixture_source(bundle_dir: str | Path) -> Provision:
     return provision
 
 
-def engine_source(vuln_type: str, tier: str) -> Provision:
+def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Provision:
     """스핀업마다 엔진으로 새 번들을 생성하는 소스(인스턴스별 랜덤 flag).
 
     generate_bundle 은 스스로 컨테이너를 빌드·실행해 레퍼런스 익스플로잇으로 자가검증한
     뒤에만 번들을 반환한다(엔진의 출하 게이트). 따라서 provision() 은 Docker 를 필요로 하고
     수십 초가 걸릴 수 있다.
+
+    template("notes"|"tickets")로 어떤 템플릿 앱을 쓸지 고른다 — 기본 notes 라 기존 2-인자
+    호출부(idor/sqli notes)는 그대로 동작한다(하위호환).
     """
-    if (vuln_type, tier) not in _SLOTS:
-        raise KeyError(f"지원하지 않는 챌린지 조합: {vuln_type}/{tier}")
-    module_path, builder_attr, task_prompt, solution_summary = _SLOTS[(vuln_type, tier)]
+    key = (vuln_type, tier, template)
+    if key not in _SLOTS:
+        raise KeyError(f"지원하지 않는 챌린지 조합: {vuln_type}/{tier}/{template}")
+    spec = _SLOTS[key]
 
     def provision() -> tuple[Path, Callable[[], None]]:
         # 엔진은 실제 생성 시점에만 임포트(무거운 libcst 등을 플랫폼 임포트 경로에서 분리).
-        from engine.bundle import generate_bundle
+        from engine.bundle import (
+            TICKETS_EXPLOIT_BUILDERS,
+            TICKETS_TEMPLATE_DIR,
+            generate_bundle,
+        )
 
-        slot_builder = getattr(importlib.import_module(module_path), builder_attr)
+        slot_builder = getattr(importlib.import_module(spec.module_path), spec.builder_attr)
+
+        # generate_bundle 오버라이드: notes 는 전부 기본값이라 손대지 않고, tickets 만
+        # 다른 템플릿·익스플로잇 빌더·시드 빌더를 붙인다(엔진 테스트 _generate_tickets_bundle 과 동일).
+        kwargs: dict = {
+            "reorder_var_name": spec.reorder_var_name,
+            "health_check_path": spec.health_check_path,
+        }
+        if spec.template == "tickets":
+            from engine import tickets_params
+
+            kwargs["template_dir"] = TICKETS_TEMPLATE_DIR
+            kwargs["exploit_builders"] = TICKETS_EXPLOIT_BUILDERS
+            kwargs["seed_data_builder"] = tickets_params.build_seed_data
 
         tmp = Path(tempfile.mkdtemp(prefix="ulsaner-bundle-"))
 
@@ -94,8 +174,9 @@ def engine_source(vuln_type: str, tier: str) -> Provision:
                 seed=secrets.randbelow(2**31),  # 매번 랜덤 → 인스턴스마다 다른 flag
                 output_dir=tmp,
                 slot_builder=slot_builder,
-                task_prompt=task_prompt,
-                solution_summary=solution_summary,
+                task_prompt=spec.task_prompt,
+                solution_summary=spec.solution_summary,
+                **kwargs,
             )
         except BaseException:
             cleanup()  # 생성 실패 시 임시 디렉토리 즉시 정리
