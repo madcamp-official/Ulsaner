@@ -83,15 +83,25 @@ td { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-divider); f
     <h2 style="font-size:15px;letter-spacing:0.16em;text-transform:uppercase;">VibeCutter vs 사람</h2>
     <span class="sub muted">핵심 지표</span>
   </div>
-  <p class="muted" style="margin:0 0 var(--space-8);font-size:13.5px;max-width:70ch;">매번 새로 생성돼 학습데이터에 없는 인스턴스에서, 자동 보안도구는 얼마나 풀고 사람은 얼마나 푸는가.</p>
+  <p class="muted" style="margin:0 0 var(--space-8);font-size:13.5px;max-width:70ch;">같은 랜덤 인스턴스 집합에서, 사람(레퍼런스 익스플로잇)은 전부 푸는데 자동 보안도구는 얼마나 잡는가.</p>
 
-  <!-- 사람 -->
-  <div style="max-width:900px;margin-bottom:var(--space-8);">
+  <!-- 사람 · 레퍼런스 익스플로잇 기준선(출하 게이트: 통과하는 익스플로잇이 있어야만 인스턴스 출하) -->
+  <div style="max-width:900px;margin-bottom:var(--space-6);">
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-2);">
-      <span class="eyebrow" style="color:var(--color-text);">사람 · 이 플랫폼</span>
+      <span class="eyebrow" style="color:var(--color-text);">사람 · 레퍼런스 익스플로잇 <span class="muted" style="letter-spacing:0;text-transform:none;">(출하 게이트 통과분)</span></span>
       <span class="num" id="h-val" style="font-size:26px;">–</span>
     </div>
     <div class="track"><div class="fill fill-human" id="h-fill"></div></div>
+    <p class="muted" id="h-note" style="margin:var(--space-3) 0 0;font-size:12.5px;max-width:70ch;">모든 인스턴스는 통과하는 레퍼런스 익스플로잇이 있어야만 출하된다 — 곧 사람은 손으로 전부 푼다는 근거(자동도구가 놓쳐도 취약점은 실재).</p>
+  </div>
+
+  <!-- 라이브 세션 · 이 플랫폼 실제 flag 제출(비면 정직하게 '시연 중 채워짐') -->
+  <div style="max-width:900px;margin-bottom:var(--space-8);">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-2);">
+      <span class="eyebrow muted">라이브 세션 · 이 플랫폼 실제 제출</span>
+      <span class="num muted" id="live-val" style="font-size:20px;">–</span>
+    </div>
+    <div class="track"><div class="fill" id="live-fill" style="width:0;background:var(--color-text);opacity:.5;"></div></div>
   </div>
 
   <!-- VibeCutter -->
@@ -148,9 +158,21 @@ async function load() {
   $("s-sol").textContent = pad2(d.solved);
   $("s-rate").textContent = pct(d.success_rate);
 
-  // 사람 막대
-  $("h-val").textContent = d.attempts ? pct(d.success_rate) : "데이터 없음";
-  $("h-fill").style.width = (d.success_rate * 100) + "%";
+  // 사람 · 레퍼런스 익스플로잇 기준선 = exploitable/instances (출하 게이트 통과분 = 손으로 풀림).
+  // 지어낸 값이 아니라 벤치마크가 기록한 실측(익스플로잇이 실제 통과한 인스턴스 수)이다.
+  const hd = d.vibecutter_detail || {};
+  if (hd.exploitable != null && hd.instances) {
+    const human = hd.exploitable / hd.instances;
+    $("h-val").textContent = pct(human) + `  ${hd.exploitable}/${hd.instances}`;
+    $("h-fill").style.width = (human * 100) + "%";
+  } else {
+    $("h-val").textContent = "벤치마크 대기";
+    $("h-note").textContent = "엔진 파트에서 벤치마크를 실행하면 레퍼런스 익스플로잇 통과분(=사람 기준선)이 채워진다.";
+  }
+
+  // 라이브 세션 = 이 플랫폼 실제 제출. 비어 있으면 지어내지 않고 '시연 중 채워짐'.
+  $("live-val").textContent = d.attempts ? pct(d.success_rate) + `  ${d.solved}/${d.attempts}` : "시연 중 채워짐";
+  $("live-fill").style.width = (d.attempts ? d.success_rate * 100 : 0) + "%";
 
   // VibeCutter 막대
   if (d.vibecutter != null) {
