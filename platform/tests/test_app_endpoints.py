@@ -77,17 +77,11 @@ def test_root_serves_dc_design():
     assert "취약점 주입 훈련 엔진" in resp.text  # dc 디자인 마커
 
 
-def test_a_serves_educational_design():
-    resp = make_client().get("/a")
-    assert resp.status_code == 200
-    assert "매번 새로 생성되는 웹 취약점 훈련장" in resp.text  # 디자인 A 마커
-
-
-def test_v2_serves_alt_design():
-    resp = make_client().get("/v2")
-    assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]
-    assert "console" in resp.text  # 다크 콘솔 디자인 마커
+def test_alt_design_routes_removed():
+    # UI 를 index_dc 하나로 정착하며 비교용 대안 라우트(/a, /v2)를 제거했다.
+    client = make_client()
+    assert client.get("/a").status_code == 404
+    assert client.get("/v2").status_code == 404
 
 
 def test_delete_challenge_tears_down():

@@ -88,10 +88,10 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const pad2 = (n) => String(n).padStart(2, "0");
 const fmt = (s) => Math.floor(s / 60) + ":" + pad2(s % 60);
 
-const UPCOMING = [
-  { id: "easy-sqli-01", type: "SQLi", tier: "easy", summary: "문자열 연결로 만든 질의. 슬롯 준비 중.", locked: true },
-  { id: "hard-idor-01", type: "IDOR", tier: "hard", summary: "검사는 있으나 잘못된 소유권 필드를 비교하는 로직 결함. 슬롯 준비 중.", locked: true },
-];
+// 계획했던 슬롯(idor easy/hard·sqli easy/hard·tickets)이 모두 라이브가 되어 '준비 중'
+// placeholder 는 비운다. /challenges 가 주는 실카드만 노출한다(locked 렌더 로직은 향후
+// '준비 중' 슬롯이 생기면 여기 항목만 추가하면 되도록 유지).
+const UPCOMING = [];
 
 const state = {
   solved: 0, attempts: 0, byChallenge: {}, phase: "catalog",   // catalog | spinup | running | solved
