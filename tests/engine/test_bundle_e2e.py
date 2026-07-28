@@ -252,6 +252,7 @@ def test_generate_tickets_hard_idor_bundle_e2e(tmp_path):
     assert manifest["tier"] == "hard"
     tickets_code = (result / "app" / "routes" / "tickets.py").read_text()
     assert "workspace_id" in tickets_code
+    assert "ticket.workspace_id" not in tickets_code  # proves the rename pass actually ran (not silently no-op'd) — reorder_var_name="ticket" was honored, not defaulted back to "note"
 
 
 @pytest.mark.integration
