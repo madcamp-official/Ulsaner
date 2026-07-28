@@ -19,6 +19,11 @@ _EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]
     "xss": exploit_gen.build_xss_exploit,
 }
 
+TICKETS_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
+    "idor": exploit_gen.build_tickets_idor_exploit,
+    "sqli": exploit_gen.build_tickets_sqli_exploit,
+}
+
 
 class BundleGenerationError(Exception):
     pass
