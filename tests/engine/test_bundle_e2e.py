@@ -203,3 +203,68 @@ def test_generate_xss_bundle_e2e(tmp_path):
     assert "safe_q = html_lib.escape(q)" not in search_code
     # ...but the results-list escaping survives (single sink)
     assert "html_lib.escape(row[1])" in search_code
+
+
+from engine.bundle import TICKETS_TEMPLATE_DIR, TICKETS_EXPLOIT_BUILDERS
+from engine import tickets_params
+from engine.slots.tickets import (
+    build_tickets_easy_idor_slot,
+    build_tickets_hard_idor_slot,
+    build_tickets_easy_sqli_slot,
+)
+
+
+def _generate_tickets_bundle(tmp_path, name, seed, slot_builder, reorder_var_name="ticket"):
+    return generate_bundle(
+        seed=seed,
+        output_dir=tmp_path / name,
+        slot_builder=slot_builder,
+        task_prompt="다른 사용자의 기밀 티켓(description)을 읽어 flag를 찾아라",
+        solution_summary="tickets_app에서의 접근제어/인젝션 결함",
+        template_dir=TICKETS_TEMPLATE_DIR,
+        seed_data_builder=tickets_params.build_seed_data,
+        exploit_builders=TICKETS_EXPLOIT_BUILDERS,
+        reorder_var_name=reorder_var_name,
+        health_check_path="/tickets/2",
+    )
+
+
+@pytest.mark.integration
+def test_generate_tickets_easy_idor_bundle_e2e(tmp_path):
+    import json
+    result = _generate_tickets_bundle(tmp_path, "t-easy-idor", 21, build_tickets_easy_idor_slot)
+    assert (result / "manifest.json").exists()
+    manifest = json.loads((result / "manifest.json").read_text())
+    assert manifest["vuln_type"] == "idor"
+    assert manifest["tier"] == "easy"
+    tickets_code = (result / "app" / "routes" / "tickets.py").read_text()
+    assert "ticket.owner_id != user.id" not in tickets_code
+    db_code = (result / "app" / "db.py").read_text()
+    assert "LIKE ?" in db_code
+
+
+@pytest.mark.integration
+def test_generate_tickets_hard_idor_bundle_e2e(tmp_path):
+    import json
+    result = _generate_tickets_bundle(tmp_path, "t-hard-idor", 22, build_tickets_hard_idor_slot)
+    manifest = json.loads((result / "manifest.json").read_text())
+    assert manifest["vuln_type"] == "idor"
+    assert manifest["tier"] == "hard"
+    tickets_code = (result / "app" / "routes" / "tickets.py").read_text()
+    assert "workspace_id" in tickets_code
+
+
+@pytest.mark.integration
+def test_generate_tickets_easy_sqli_bundle_e2e(tmp_path):
+    import json
+    result = _generate_tickets_bundle(
+        tmp_path, "t-easy-sqli", 23, build_tickets_easy_sqli_slot, reorder_var_name="ticket"
+    )
+    manifest = json.loads((result / "manifest.json").read_text())
+    assert manifest["vuln_type"] == "sqli"
+    assert manifest["tier"] == "easy"
+    db_code = (result / "app" / "db.py").read_text()
+    assert "LIKE '%{q}%'" in db_code
+    assert "LIKE ?" not in db_code
+    tickets_code = (result / "app" / "routes" / "tickets.py").read_text()
+    assert "ticket.owner_id != user.id" in tickets_code
