@@ -54,6 +54,10 @@ would misrepresent what was actually discovered. The path placeholders below
 must be replaced with an absolute path to a real VibeCutter checkout + its
 own (separate, non-project) virtualenv; there is no repo-relative path since
 VibeCutter is not vendored into this project.
+
+실제로 동작하는 VibeCutter 하네스는 engine/vibecutter_bench.py 다(2단계: gen=Ulsaner
+venv, audit=VibeCutter venv). 이 파일(vibecutter_config.py)과 engine/benchmark.py 는
+"왜 제네릭 exit-code 방식이 실제 VibeCutter 와 안 맞는가"를 문서화하는 용도로 남는다.
 """
 
 # Discovered from VibeCutter's README.md section 4 (Claude Code MCP registration
