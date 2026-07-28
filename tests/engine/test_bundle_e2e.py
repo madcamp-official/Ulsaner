@@ -115,10 +115,14 @@ def test_generate_easy_sqli_bundle_e2e(tmp_path):
     assert "note.owner_id != user.id" in notes_routes_code
 
     # the vulnerable db.py must actually contain the concatenated query, proving the AST
-    # transform ran (not just that verification happened to pass by coincidence)
+    # transform ran (not just that verification happened to pass by coincidence).
+    # Scope this to search_notes_by_title specifically: search_notes_advanced (a separate
+    # function, the hard_sqli slot's target) legitimately keeps its own "LIKE ?" placeholder
+    # untouched by this easy_sqli slot, so a whole-file substring check is too broad.
     db_code = (result / "app" / "db.py").read_text()
-    assert "LIKE ?" not in db_code
-    assert "LIKE '%{q}%'" in db_code
+    search_by_title_code = db_code.split("def search_notes_by_title")[1].split("\ndef ")[0]
+    assert "LIKE ?" not in search_by_title_code
+    assert "LIKE '%{q}%'" in search_by_title_code
 
 
 from engine.slots.hard_sqli import build_hard_sqli_slot
