@@ -163,3 +163,43 @@ def test_generate_hard_sqli_bundle_e2e(tmp_path):
     # ...and the idor slot's target (routes/notes.py ownership check) intact
     notes_routes_code = (result / "app" / "routes" / "notes.py").read_text()
     assert "note.owner_id != user.id" in notes_routes_code
+
+
+from engine.slots.xss import build_xss_slot
+
+
+@pytest.mark.integration
+def test_generate_xss_bundle_e2e(tmp_path):
+    import json
+    output_dir = tmp_path / "bundle-xss"
+    result = generate_bundle(
+        seed=8,
+        output_dir=output_dir,
+        slot_builder=build_xss_slot,
+        task_prompt="검색 결과 페이지(GET /notes/search/view)에 검색어가 이스케이프 없이 반사된다. 페이로드가 원문 그대로 반영됨을 증명하라 (반사형 XSS).",
+        solution_summary="search_notes_view가 검색어 q를 html.escape 없이 HTML에 삽입 -> <script> 페이로드가 이스케이프되지 않고 그대로 반사",
+    )
+    assert (result / "manifest.json").exists()
+
+    exploit_path = result / "exploits" / "reference.json"
+    with open(exploit_path) as f:
+        exploit_data = json.load(f)
+    assert exploit_data["method"] == "GET"
+    assert exploit_data["path"].startswith("/notes/search/view?q=")
+    # deliberate divergence: expected_flag is the full <script> payload
+    assert exploit_data["expected_flag"].startswith("<script>")
+    assert exploit_data["expected_flag"].endswith("</script>")
+
+    manifest = json.loads((result / "manifest.json").read_text())
+    assert manifest["vuln_type"] == "xss"
+    assert manifest["tier"] == "easy"
+    # manifest flag stays the bare FLAG{...} (NOT the payload) and matches the schema
+    assert manifest["flag"].startswith("FLAG{")
+    assert manifest["flag"] in exploit_data["expected_flag"]
+
+    # the escaping was really stripped from the echoed term (transform ran)...
+    search_code = (result / "app" / "routes" / "search.py").read_text()
+    assert "safe_q = q" in search_code
+    assert "safe_q = html_lib.escape(q)" not in search_code
+    # ...but the results-list escaping survives (single sink)
+    assert "html_lib.escape(row[1])" in search_code
