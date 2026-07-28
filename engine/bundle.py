@@ -15,6 +15,7 @@ _EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]
     "idor": exploit_gen.build_idor_exploit,
     "sqli": exploit_gen.build_sqli_exploit,
     "hard_sqli": exploit_gen.build_hard_sqli_exploit,
+    "xss": exploit_gen.build_xss_exploit,
 }
 
 
