@@ -1,0 +1,12 @@
+rules:
+  - id: unparameterized-sql-execute
+    languages: [python]
+    severity: WARNING
+    message: >
+      SQL query passed to .execute() as a single f-string/interpolated argument,
+      with no separate bound-parameter tuple (SQL injection risk).
+    patterns:
+      - pattern: $CONN.execute($QUERY)
+      - metavariable-regex:
+          metavariable: $QUERY
+          regex: "^f['\"]"
