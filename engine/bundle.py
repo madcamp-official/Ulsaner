@@ -55,6 +55,8 @@ def generate_bundle(
         injector.inject(template_dir, app_dir, slot)
         if slot.tier == "hard":
             new_var_name = f"n{rng.getrandbits(16):04x}"
+            # Note: hard_sqli's reorder is a no-op—search_notes_advanced has no local var "note".
+            # hard_sqli difficulty comes from prepared-statement-disguise, not rename obfuscation.
             injector.apply_extra_transform(
                 app_dir,
                 slot.target_file,
