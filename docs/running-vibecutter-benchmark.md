@@ -1,90 +1,105 @@
-# VibeCutter 벤치마크 실행 가이드 (공유 태스크)
+# VibeCutter 벤치마크 실행 가이드
 
-"자동도구(VibeCutter) vs 사람" 성공률의 **자동도구 쪽 숫자**를 만드는 절차.
-결과를 `platform/data/vibecutter_result.json` 으로 저장하면 대시보드(`/dashboard`)가 자동으로 채운다.
+"자동도구(VibeCutter) vs 사람" 성공률 비교에서 **자동도구 쪽 숫자**를 만드는 절차다.
+하네스는 `engine/vibecutter_bench.py` 하나(gen/audit 두 서브커맨드)이고, 결과 JSON을
+`platform/data/vibecutter_result.json`에 쓰면 대시보드(`/dashboard`)가 이를
+`ulsaner_platform.app._load_vibecutter`로 읽어 자동으로 채운다.
 
-> ⚠️ **중요 — 완전 자동 배치가 아니다.** VibeCutter(https://github.com/madcamp-official/VibeCutter)는
-> `--target <dir>` 배치 CLI가 아니라 **대화형 MCP 서버**다. LLM 호스트(Claude Code)가 승인 게이트
-> (네/아니오)를 거쳐 스캔→공격 재현→검증 도구를 순서대로 몰아줘야 감사가 된다. 따라서 이 벤치마크는
-> **당신의 Claude Code 세션에서 사람이 직접 구동**한다. (배치 CLI `eval/run_m1.py`는 캠프 내부 VPN의
-> 235B LLM 엔드포인트가 필요해 우리 환경에선 불가 — `engine/vibecutter_config.py` 참고.)
+> 이 문서는 예전 inline-heredoc `engine.bundle.generate_bundle` 기반 워크플로우(Docker
+> 자가검증, git-repo 타깃, 대화형 MCP 승인 흐름)를 **벤치마킹 목적으로 대체**한다. 자세한
+> 배경(왜 VibeCutter가 `--target <dir>` 배치 CLI가 아니라 대화형 MCP 서버인지, 왜
+> `engine.benchmark.run_external_auditor`의 제네릭 exit-code 방식이 안 맞는지)은
+> `engine/vibecutter_config.py`의 모듈 docstring에 여전히 문서화되어 있다 — 이 문서는
+> 그 대신 실제로 동작하는 2단계 배치 하네스만 다룬다.
 
-## 0. 준비 상태 (이미 완료)
+## 개요
 
-- VibeCutter 클론·설치 완료: `/Users/kimminjae/Documents/몰입캠프/VibeCutter`
-  (python3.13 venv + `pip install -r requirements.txt`, MCP 서버 기동 검증 완료).
-  playwright chromium 브라우저는 **미설치** — XSS 감사에만 필요하고 우리 타깃은 IDOR/SQLi라 불필요.
-- 예시 블라인드 타깃 1개 생성됨: `/Users/kimminjae/Documents/몰입캠프/vibecutter-targets/easy-idor-seed30367/`
-  (app 소스만 있는 git repo. 정답 flag 는 같은 폴더 `GROUND_TRUTH.txt` 에 별도 기록 — 채점 대조용).
+`engine/vibecutter_bench.py`는 seed별 취약앱 생성(Phase 1) → VibeCutter 감사 + Ulsaner
+레퍼런스 익스플로잇으로 독립 ground truth 확인(Phase 2) → 결과 JSON 저장을 담당하는
+단일 모듈/두 서브커맨드(`gen`, `audit`) 하네스다. 두 단계는 의존성이 상호 배타적이라
+**서로 다른 파이썬 인터프리터**에서 실행해야 한다(gen=Ulsaner `.venv`, audit=VibeCutter
+자체 venv). 그래서 이 파일은 단일 진입점이되, VibeCutter 관련 import는 `cmd_audit` 내부에,
+engine 관련 import는 `generate_apps`/`cmd_gen` 내부에 지연(lazy) 배치되어 있다 — 모듈
+최상단은 표준 라이브러리만 import 한다.
 
-## 1. MCP 서버 등록 (한 번만, 당신 터미널에서)
+## 사전준비
 
-```bash
-claude mcp add --scope user vibecutter -- /Users/kimminjae/Documents/몰입캠프/VibeCutter/.venv/bin/python /Users/kimminjae/Documents/몰입캠프/VibeCutter/mcp_server/server.py
-```
+**Phase 1 (gen) — Ulsaner 쪽:**
+- 이 저장소의 `.venv` (libcst + `engine` 패키지가 설치되어 있으면 충분). 별도 설정 불필요.
 
-등록 후 **Claude Code 재시작**. `/mcp` 로 `vibecutter` 가 연결됐는지 확인.
+**Phase 2 (audit) — VibeCutter 쪽:**
+- VibeCutter(https://github.com/madcamp-official/VibeCutter)를 **별도 경로에 클론**하고
+  자체 venv를 만들어 `requirements.txt`를 설치해야 한다.
+- `docs/vibecutter-patches/idor-prefilter-authz-blindspot.patch`를 그 클론에 적용해야
+  한다(IDOR prefilter의 인가맹점 수정 — 이게 없으면 `success_rate`가 아닌
+  `success_rate_stock`만 의미 있는 숫자가 된다).
+- 감사 대상 앱을 실제로 띄울 **타겟별 venv**(uvicorn + 앱 의존성)의 인터프리터 경로가
+  하나 더 필요하다(`VCVENV_PY`).
+- `vibecutter_bench.py`의 `_DEFAULT_VC_ROOT`/`_DEFAULT_VCVENV_PY`는 **팀원 개인 머신의
+  절대경로**라 다른 환경에서는 반드시 안 맞는다 — 정상 사용은 항상 `VC_ROOT`/`VCVENV_PY`
+  환경변수로 덮어쓰는 것이다.
 
-## 2. 벤치마크 타깃 더 만들기 (N개)
-
-인스턴스마다 랜덤이라 여러 개를 감사해야 의미 있는 성공률이 나온다. 아래로 원하는 만큼 생성한다
-(easy-idor / hard-idor / easy-sqli 를 섞어 각 티어별로):
-
-```bash
-cd /Users/kimminjae/Documents/몰입캠프/Ulsaner
-# slot 을 easy_idor / hard_idor / easy_sqli 로 바꿔가며 반복
-PYTHONPATH=platform:. .venv/bin/python - <<'PY'
-import pathlib, tempfile, shutil, json, subprocess, secrets
-from engine.bundle import generate_bundle
-from engine.slots.easy_idor import build_easy_idor_slot   # ← 티어별로 교체
-targets = pathlib.Path.home()/ "Documents/몰입캠프/vibecutter-targets"
-for _ in range(5):                                        # ← 개수
-    seed = secrets.randbelow(10**5)
-    tmp = pathlib.Path(tempfile.mkdtemp())
-    out = generate_bundle(seed=seed, output_dir=tmp, slot_builder=build_easy_idor_slot,
-        task_prompt="다른 사용자의 비공개 노트를 읽어 flag를 획득하라", solution_summary="IDOR")
-    flag = json.loads((out/"manifest.json").read_text())["flag"]
-    tgt = targets/f"easy-idor-seed{seed}"; shutil.rmtree(tgt, ignore_errors=True)
-    shutil.copytree(out/"app", tgt)
-    subprocess.run(["git","init","-q"], cwd=tgt); subprocess.run(["git","add","-A"], cwd=tgt)
-    subprocess.run(["git","-c","user.email=a@b.c","-c","user.name=x","commit","-q","-m","init"], cwd=tgt)
-    with open(targets/"GROUND_TRUTH.txt","a") as f: f.write(f"{tgt.name}\teasy-idor\t{flag}\n")
-    shutil.rmtree(tmp, ignore_errors=True); print("생성:", tgt.name)
-PY
-```
-
-각 타깃은 **app 소스만** 담은 git repo다(정답 미포함 → VibeCutter가 진짜로 찾아야 함).
-
-## 3. 감사 구동 (당신 Claude Code 세션에서, 타깃마다)
-
-`vibecutter` MCP가 연결된 Claude Code 에서, 타깃마다 이렇게 말한다:
-
-> 이 프로젝트 `/Users/.../vibecutter-targets/easy-idor-seed30367` 좀 보안 검사해줘
-
-Claude가 VibeCutter 도구로 등록(scaffold)→빌드→접근제어 스캔→**공격 재현**→검증을 진행하며 중간중간
-네/아니오 승인을 물어본다(패치는 승인하지 말고 **감사까지만** — 우리는 탐지 여부만 잰다).
-
-**기록:** 그 타깃에서 VibeCutter가 접근제어 취약점을 **`verified`(재현·검증) 로 확정하면 "성공(solved)"**,
-못 찾거나 미검증이면 "실패". 타깃별로 solved 여부를 적어둔다.
-
-## 4. 결과 집계 → 대시보드 연동
-
-solved/total 을 `run_benchmark()` 와 같은 형식으로 저장한다:
+## Phase 1 — 취약앱 생성 (Ulsaner venv, 저장소 루트에서)
 
 ```bash
-cat > /Users/kimminjae/Documents/몰입캠프/Ulsaner/platform/data/vibecutter_result.json <<'JSON'
-{ "seeds": [30367, 11111, 22222, 33333, 44444],
-  "results": [true, false, false, false, false],
-  "success_rate": 0.2 }
-JSON
+ULSANER_ROOT="$(pwd)" .venv/bin/python -m engine.vibecutter_bench gen <workdir> \
+    [--classes idor-easy,idor-hard,sqli-easy,sqli-hard] [--seeds-per-class N]
 ```
 
-- `results[i]` = i번째 타깃을 VibeCutter가 solved 했는가(true/false).
-- `success_rate` = solved / total.
-- 저장하면 `/dashboard` 의 "VibeCutter (자동도구)" 막대가 이 숫자로 채워진다(서버 재시작 불필요, 새로고침).
+- `<workdir>`: 생성된 앱들과 `index.json`이 놓일 작업 디렉토리.
+- `--classes`: 쉼표구분 클래스 목록. 기본값은 4개 클래스 전부
+  (`idor-easy,idor-hard,sqli-easy,sqli-hard`).
+- `--seeds-per-class`: 클래스당 seed 개수 (기본 5).
 
-## 5. 해석 (thesis)
+## Phase 2 — VibeCutter 감사 (VibeCutter venv, 아무 cwd에서 절대경로 스크립트로)
 
-- **hard-idor / (있다면) 어려운 케이스에서 VibeCutter 성공률이 낮게** 나오는 게 우리에게 유리한 결과다
-  ("자동도구는 잘 못 푼다"). easy 는 대조군으로 상대적으로 높게 나올 것.
-- 사람 성공률(플랫폼 실제 flag 제출 집계)과 나란히 두면 "자동도구 X% vs 사람 Y%" 발표 지표가 완성된다.
+```bash
+VC_ROOT=/path/to/VibeCutter VCVENV_PY=/path/to/target/.vcvenv/bin/python \
+    "$VC_ROOT/.venv/bin/python" "$ULSANER_ROOT/engine/vibecutter_bench.py" audit \
+    <workdir> <out.json>
+```
+
+- `<workdir>`: Phase 1이 만든 `index.json`이 있는 그 작업 디렉토리(동일 경로).
+- `<out.json>`: 결과 JSON 출력 경로. 대시보드에 연동하려면
+  `platform/data/vibecutter_result.json`로 지정한다.
+- 이 단계는 각 앱마다 `uvicorn`을 로컬 포트에 기동하고, VibeCutter의 탐지/검증기와
+  Ulsaner 레퍼런스 익스플로잇을 둘 다 실행한 뒤 프로세스를 정리한다.
+
+## 출력 스키마
+
+정식 예시는 `docs/vibecutter-patches/benchmark/benchmark-result.json`를 참고한다(실제
+15-seed 실행 결과, 4개 클래스 중 idor-easy/idor-hard/sqli-easy 3개 채움). `_load_vibecutter`가
+소비하는 필드:
+
+- `success_rate` (float) — 필수. 없으면 대시보드는 "벤치마크 대기" 상태를 유지한다.
+- `results` (list[bool]) — 인스턴스 개수·solved 개수 계산에 사용.
+- `success_rate_stock` (float, 선택) — IDOR prefilter 수정 전(stock) 성공률. 있으면
+  `stock_rate`로 노출.
+- `success_rate_by_class` (dict, 선택) — 클래스별(`idor-easy`, `idor-hard`, `sqli-easy`,
+  `sqli-hard`) 성공률. 있으면 `by_class`로 노출.
+- `detail` (list[dict], 선택) — 인스턴스별 상세 행. 각 행의 `exploitable` 필드 합계가
+  대시보드의 "취약점 실재" 카운트(자동도구가 놓쳐도 실제로는 취약한 인스턴스 수)로
+  노출된다.
+- `seeds` (list[int]) — 참고용, 소비되지 않지만 재현성을 위해 항상 채운다.
+
+## 관계 노트
+
+이 2단계 하네스(`engine/vibecutter_bench.py`)는 옛 수동 `generate_bundle` heredoc
+워크플로우를 **벤치마킹 목적으로만** 대체한다 — Docker 자가검증을 포함한 정식 번들
+생성(`engine.bundle.generate_bundle`)은 여전히 플랫폼이 실제 학생 인스턴스를 스핀업할 때
+쓰는 경로이고 바뀌지 않았다. 반면 VibeCutter를 **대화형 MCP 서버로 사람이 직접 승인
+게이트를 눌러가며 구동하는 절차**에 대한 설명은 이 문서가 아니라
+`engine/vibecutter_config.py`의 모듈 docstring에 남아 있다(왜 배치 CLI가 아닌지, 왜
+`engine.benchmark.run_external_auditor`의 제네릭 exit-code 인터페이스와 근본적으로
+안 맞는지 포함).
+
+## 테제 해석
+
+`docs/vibecutter-patches/benchmark/benchmark-result.json`의 실제 수치가 보여주듯,
+hard 티어(및 sqli)로 갈수록 VibeCutter의 정적 prefilter가 못 잡아내는 케이스가
+늘어난다(`success_rate_by_class`: idor-easy 1.0, idor-hard 0.0, sqli-easy 0.0). 하지만
+`exploitable`은 모든 행에서 계속 `true`로 남는다 — 즉 인스턴스는 실제로 취약하고,
+Ulsaner 레퍼런스 익스플로잇이 매번 flag를 뽑아낸다. 이것이 우리 테제다: **"존재 vs
+정확성이 자동도구를 속인다."** 자동도구의 미탐은 취약점이 없다는 뜻이 아니라, 자동도구가
+찾아내는 능력의 한계일 뿐이다 — hard-idor(owner→workspace 위장)와 easy-sqli(sink이
+서비스 계층 `db.py`에 있어 라우트에 안 붙는 경우)가 이를 보여주는 구체적 예시다.

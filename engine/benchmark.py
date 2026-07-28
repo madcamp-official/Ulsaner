@@ -1,3 +1,9 @@
+# NOTE (VibeCutter 관계 정리): 이 모듈의 run_external_auditor/run_benchmark 는
+# "타깃 디렉토리에 대해 한 번 실행하고 종료코드를 읽는" 배치-CLI 감사도구를 가정한다.
+# 실제 VibeCutter 는 대화형 MCP stdio 서버라 이 인터페이스와 맞지 않는다
+# (engine/vibecutter_config.py 참고). 실제로 도는 VibeCutter 벤치마크 하네스는
+# engine/vibecutter_bench.py 다. 이 파일은 삭제하지 않고(작고 테스트도 있음) 미래의
+# 가상 배치-CLI 감사도구를 위해 남겨둔다.
 import subprocess
 import pathlib
 from dataclasses import dataclass
