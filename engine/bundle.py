@@ -29,6 +29,21 @@ class BundleGenerationError(Exception):
     pass
 
 
+def _resolve_task_prompt(task_prompt: str, seed_data: dict) -> str:
+    """task_prompt 의 ``{alice_token}`` placeholder 를 seed 의 alice(=id 1) 토큰으로 치환한다.
+
+    인증형(idor) 챌린지는 인스턴스마다 토큰이 랜덤이라, 학생이 자기 자격증명을 얻을 통로가
+    필요하다. fixture 가 프롬프트로 'alice-token' 을 알려주는 것과 동일하게, 여기서 랜덤 토큰을
+    프롬프트에 채워 넣는다. 토큰은 alice 자신의 자격증명이므로 공개해도 flag(=bob 의 비공개
+    본문)는 새지 않는다. placeholder 가 없으면(인증 불필요한 sqli 등) 원문 그대로 반환한다.
+    """
+    if "{alice_token}" not in task_prompt:
+        return task_prompt
+    users = seed_data.get("users") or []
+    alice = next((u for u in users if u.get("id") == 1), users[0] if users else {})
+    return task_prompt.replace("{alice_token}", alice.get("token", ""))
+
+
 def generate_bundle(
     seed: int,
     output_dir: pathlib.Path,
@@ -82,7 +97,7 @@ def generate_bundle(
                 vuln_type=slot.vuln_type,
                 tier=slot.tier,
                 flag=flag,
-                task_prompt=task_prompt,
+                task_prompt=_resolve_task_prompt(task_prompt, seed_data),
                 reference_exploit_path="exploits/reference.json",
                 solution_summary=solution_summary,
             )
