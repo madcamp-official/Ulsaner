@@ -199,18 +199,10 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
-        # 주 UI — Claude Design 핸드오프를 재현·실배선한 버전.
+        # 정식 데모 UI(Modernist, Claude Design 핸드오프 재현·실배선). 비교용이던 대안
+        # 디자인 2종(/a claymorphism, /v2 다크 콘솔)은 이 UI로 정착하며 제거했다
+        # (드래프트는 git 이력에 남음).
         return (_STATIC_DIR / "index_dc.html").read_text(encoding="utf-8")
-
-    @app.get("/a", response_class=HTMLResponse)
-    def index_a() -> str:
-        # 대안 디자인 A(교육형 claymorphism) — 비교용.
-        return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
-
-    @app.get("/v2", response_class=HTMLResponse)
-    def index_v2() -> str:
-        # 대안 디자인 B(다크 콘솔) — 비교용.
-        return (_STATIC_DIR / "index_claude.html").read_text(encoding="utf-8")
 
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard() -> str:
