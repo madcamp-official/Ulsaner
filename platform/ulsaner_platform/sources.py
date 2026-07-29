@@ -90,6 +90,17 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         "검색 결과 페이지(GET /notes/search/view)에 검색어가 이스케이프 없이 반사됩니다. <script> 페이로드가 원문 그대로 반영됨을 증명하세요(반사형 XSS).",
         "search_notes_view 가 검색어 q 를 html.escape 없이 HTML 에 삽입 — <script> 페이로드가 그대로 반사된다.",
     ),
+    ("ssrf", "hard", "gateway"): _SlotSpec(
+        "engine.slots.ssrf",
+        "build_ssrf_slot",
+        "URL 상태 확인 도구가 있는 게이트웨이입니다. flag 는 내부 vault 에 있는데 외부에선 내부 서비스(/internal/*)에 직접 못 갑니다. "
+        "이 도구를 이용해 서버가 대신 내부에 접근하게 만들고, 두 단계에 걸쳐 내부로 피벗해 flag 를 획득하세요. "
+        "힌트: /status 로 내부 서비스가 어디 있는지부터 파악하세요.",
+        "fetch 의 내부 URL 차단이 빠져(SSRF), 서버를 통해 /internal/services 로 1차 피벗→vault_token 획득, "
+        "그 토큰으로 /internal/vault 2차 피벗→flag. 내부는 /fetch 가 붙이는 신뢰 헤더로만 도달 가능. 2-hop 추리 체인.",
+        template="gateway",
+        health_check_path="/status",
+    ),
     ("takeover", "hard", "accounts"): _SlotSpec(
         "engine.slots.reset_token",
         "build_reset_token_slot",
@@ -175,6 +186,8 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
         from engine.bundle import (
             ACCOUNTS_EXPLOIT_BUILDERS,
             ACCOUNTS_TEMPLATE_DIR,
+            GATEWAY_EXPLOIT_BUILDERS,
+            GATEWAY_TEMPLATE_DIR,
             PORTAL_EXPLOIT_BUILDERS,
             PORTAL_TEMPLATE_DIR,
             TICKETS_EXPLOIT_BUILDERS,
@@ -215,6 +228,14 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
             kwargs["exploit_builders"] = ACCOUNTS_EXPLOIT_BUILDERS
             kwargs["seed_data_builder"] = getattr(
                 accounts_params, spec.seed_builder_attr or "build_seed_data"
+            )
+        elif spec.template == "gateway":
+            from engine import gateway_params
+
+            kwargs["template_dir"] = GATEWAY_TEMPLATE_DIR
+            kwargs["exploit_builders"] = GATEWAY_EXPLOIT_BUILDERS
+            kwargs["seed_data_builder"] = getattr(
+                gateway_params, spec.seed_builder_attr or "build_seed_data"
             )
         elif spec.seed_builder_attr:
             from engine import params
