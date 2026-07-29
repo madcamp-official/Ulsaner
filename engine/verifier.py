@@ -48,6 +48,7 @@ def _run_exploit(port: int, exploit: ReferenceExploit) -> bool:
         exploit.method,
         f"http://localhost:{port}{exploit.path}",
         headers=exploit.headers,
+        json=exploit.body,  # None 이면 바디 없음(기존 GET 동작 그대로)
         timeout=5,
     )
     return exploit.expected_flag in response.text

@@ -13,9 +13,9 @@
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
     },
     "vuln_type": {
-      "description": "취약점 클래스. idor/sqli(easy·hard 공용) + hard_sqli(prepared-statement 위장형) + xss(반사형) + bfla(함수레벨 인가 누락, 대량조회 엔드포인트).",
+      "description": "취약점 클래스. idor/sqli(easy·hard 공용) + hard_sqli(prepared-statement 위장형) + xss(반사형) + bfla(함수레벨 인가 누락) + logic(비즈니스 로직 결함).",
       "type": "string",
-      "enum": ["idor", "sqli", "hard_sqli", "xss", "bfla"]
+      "enum": ["idor", "sqli", "hard_sqli", "xss", "bfla", "logic"]
     },
     "tier": {
       "description": "난이도 티어. easy=대조군(교과서), hard=주력(로직/접근제어 결함).",

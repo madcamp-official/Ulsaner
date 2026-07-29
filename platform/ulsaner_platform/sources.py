@@ -122,6 +122,17 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         reorder_var_name="ticket",
         health_check_path="/tickets/2",
     ),
+    ("logic", "easy", "store"): _SlotSpec(
+        "engine.slots.store",
+        "build_store_logic_slot",
+        "당신은 포인트 상점 고객(잔액 100P)입니다 (요청 헤더 Authorization: Bearer {attacker_token}). "
+        "프리미엄 상품에 리워드(flag)가 걸려 있는데 9999P 라 잔액으론 못 삽니다. "
+        "구매 로직의 허점을 논리로 찾아 프리미엄 상품을 손에 넣어 flag 를 획득하세요.",
+        "구매가 총액=가격×수량 으로 잔액을 검사하는데 수량 양수 검증이 빠져(비즈니스 로직 결함), "
+        "음수 수량으로 총액을 음수로 만들면 잔액 검사를 통과해 프리미엄 상품(리워드=flag)을 살 수 있다.",
+        template="store",
+        health_check_path="/store/items",
+    ),
     ("sqli", "easy", "tickets"): _SlotSpec(
         "engine.slots.tickets",
         "build_tickets_easy_sqli_slot",
@@ -162,6 +173,8 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
     def provision() -> tuple[Path, Callable[[], None]]:
         # 엔진은 실제 생성 시점에만 임포트(무거운 libcst 등을 플랫폼 임포트 경로에서 분리).
         from engine.bundle import (
+            STORE_EXPLOIT_BUILDERS,
+            STORE_TEMPLATE_DIR,
             TICKETS_EXPLOIT_BUILDERS,
             TICKETS_TEMPLATE_DIR,
             generate_bundle,
@@ -184,6 +197,14 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
             kwargs["exploit_builders"] = TICKETS_EXPLOIT_BUILDERS
             kwargs["seed_data_builder"] = getattr(
                 tickets_params, spec.seed_builder_attr or "build_seed_data"
+            )
+        elif spec.template == "store":
+            from engine import store_params
+
+            kwargs["template_dir"] = STORE_TEMPLATE_DIR
+            kwargs["exploit_builders"] = STORE_EXPLOIT_BUILDERS
+            kwargs["seed_data_builder"] = getattr(
+                store_params, spec.seed_builder_attr or "build_seed_data"
             )
         elif spec.seed_builder_attr:
             from engine import params
