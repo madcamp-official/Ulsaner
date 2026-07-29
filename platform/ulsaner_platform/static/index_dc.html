@@ -46,7 +46,9 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 @keyframes ul-rise { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 /* 하단 오리 마스코트: 나쁜 오리(duck2)는 자동으로 좌우를 걸어다니고,
    이동 방향에 맞춰 좌우반전된다(원본은 왼쪽을 본다). 일반 오리(duck1)는
-   자동 애니메이션 대신 마우스 x좌표를 따라가도록 JS로 제어한다(아래 script). */
+   자동 애니메이션 대신 마우스 x좌표를 따라가도록 JS로 제어한다(아래 script).
+   가로 이동/반전은 -wrap 요소가, 세로 점프는 안쪽 img가 각자 맡아서
+   두 transform이 서로 덮어쓰지 않게 분리했다. */
 @keyframes duck-walk-2 {
   0%    { transform: translateX(0)      scaleX(1); }
   49.9% { transform: translateX(-140px) scaleX(1); }
@@ -54,6 +56,20 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
   99.9% { transform: translateX(0)      scaleX(-1); }
   100%  { transform: translateX(0)      scaleX(1); }
 }
+/* 클릭하면 한 번 점프. 로딩(스핀업) 중에는 -loop 로 계속 점프하다가,
+   새 화면(실행 중)으로 넘어가면 클래스가 빠지며 바닥에 착지한다. */
+@keyframes duck-jump-once {
+  0%   { transform: translateY(0); }
+  30%  { transform: translateY(-44px); }
+  55%  { transform: translateY(-44px); }
+  100% { transform: translateY(0); }
+}
+@keyframes duck-jump-loop {
+  0%, 100% { transform: translateY(0); }
+  45%      { transform: translateY(-32px); }
+}
+.duck-jump-once { animation: duck-jump-once 0.5s cubic-bezier(.34,1.56,.64,1) 1; }
+.duck-jump-loop { animation: duck-jump-loop 0.55s ease-in-out infinite; }
 /* 일반 오리를 빠르게 움직이면 진행 방향 뒤로 흩날리는 먼지 입자.
    컨테이너가 pointer-events:none·overflow:hidden 이라 클릭 방해 없이 하단 스트립에 갇힌다. */
 @keyframes duck-dust {
@@ -72,9 +88,13 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 <body>
 <div id="app" style="min-height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);"></div>
 
-<div aria-hidden="true" style="position:fixed;left:0;right:0;bottom:0;height:100px;pointer-events:none;overflow:hidden;z-index:1;">
-  <img id="duck-normal" src="/assets/duck1.png" alt="" style="position:absolute;left:22%;bottom:0;height:78px;width:auto;image-rendering:pixelated;transform-origin:center bottom;transition:left 0.25s ease-out, transform 0.2s ease-out;" />
-  <img src="/assets/duck2.png" alt="" style="position:absolute;left:58%;bottom:0;height:88px;width:auto;image-rendering:pixelated;animation:duck-walk-2 8.5s ease-in-out infinite;transform-origin:center bottom;" />
+<div id="duck-stage" aria-hidden="true" style="position:fixed;left:0;right:0;bottom:0;height:100px;pointer-events:none;overflow:hidden;z-index:1;">
+  <div id="duck-normal-wrap" style="position:absolute;left:22%;bottom:0;transform-origin:center bottom;transition:left 0.25s ease-out, transform 0.2s ease-out;">
+    <img id="duck-normal" src="/assets/duck1.png" alt="" style="display:block;height:78px;width:auto;image-rendering:pixelated;transform-origin:center bottom;pointer-events:auto;cursor:pointer;" />
+  </div>
+  <div id="duck-bad-wrap" style="position:absolute;left:58%;bottom:0;transform-origin:center bottom;animation:duck-walk-2 8.5s ease-in-out infinite;">
+    <img id="duck-bad" src="/assets/duck2.png" alt="" style="display:block;height:88px;width:auto;image-rendering:pixelated;transform-origin:center bottom;pointer-events:auto;cursor:pointer;" />
+  </div>
 </div>
 
 <script>
@@ -82,9 +102,9 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 // 일반 오리(duck-normal)는 자동 애니메이션 없이 마우스 x좌표를 따라간다.
 // 나쁜 오리(duck2)는 CSS duck-walk-2 애니메이션으로 계속 자동으로 걷는다.
 (function () {
-  const duck = document.getElementById("duck-normal");
-  if (!duck) return;
-  const layer = duck.parentElement; // 하단 고정 스트립(pointer-events:none, overflow:hidden)
+  const wrap = document.getElementById("duck-normal-wrap");
+  const layer = document.getElementById("duck-stage"); // 하단 고정 스트립(pointer-events:none, overflow:hidden)
+  if (!wrap || !layer) return;
   let lastX = null, lastT = 0, lastPuff = 0;
 
   function spawnDust(cx, dir) {
@@ -107,12 +127,12 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 
   document.addEventListener("mousemove", (e) => {
     const now = e.timeStamp || performance.now();
-    const w = duck.offsetWidth || 60;
+    const w = wrap.offsetWidth || 60;
     const maxLeft = Math.max(0, window.innerWidth - w);
     const left = Math.max(0, Math.min(maxLeft, e.clientX - w / 2));
     if (lastX !== null && Math.abs(e.clientX - lastX) > 1) {
       const dir = e.clientX > lastX ? 1 : -1;
-      duck.style.transform = dir > 0 ? "scaleX(-1)" : "scaleX(1)";
+      wrap.style.transform = dir > 0 ? "scaleX(-1)" : "scaleX(1)";
       // 속도(px/ms). 빠르게 움직일 때만, 그리고 과하지 않게 스로틀링해서 먼지를 뿜는다.
       const speed = Math.abs(e.clientX - lastX) / Math.max(1, now - lastT);
       if (speed > 1.4 && now - lastPuff > 45) {
@@ -121,8 +141,36 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
       }
     }
     lastX = e.clientX; lastT = now;
-    duck.style.left = left + "px";
+    wrap.style.left = left + "px";
   });
+})();
+
+// 오리 클릭 → 한 번 점프(로딩 중 이미 계속 점프하고 있으면 무시).
+// 가로 이동/반전은 각 -wrap 요소가 맡고, 점프(translateY)는 안쪽 img만 담당해서
+// 두 애니메이션이 같은 transform 속성을 두고 충돌하지 않는다.
+(function () {
+  const jumpers = [document.getElementById("duck-normal"), document.getElementById("duck-bad")].filter(Boolean);
+  jumpers.forEach((img) => {
+    img.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (img.classList.contains("duck-jump-loop")) return; // 로딩 점프 중엔 클릭 점프 무시
+      img.classList.remove("duck-jump-once");
+      void img.offsetWidth; // 강제 리플로우로 같은 클래스 재적용 시에도 애니메이션 재시작
+      img.classList.add("duck-jump-once");
+    });
+    img.addEventListener("animationend", (e) => {
+      if (e.animationName === "duck-jump-once") img.classList.remove("duck-jump-once");
+    });
+  });
+
+  // 스핀업(로딩) 중엔 계속 점프, 새 화면(실행 중 등)으로 넘어가면 착지.
+  // render()가 phase 전환 때마다 호출되므로 여기서 매번 동기화한다.
+  window.__syncDuckLoading = function (loading) {
+    jumpers.forEach((img) => {
+      if (loading) { img.classList.remove("duck-jump-once"); img.classList.add("duck-jump-loop"); }
+      else img.classList.remove("duck-jump-loop");
+    });
+  };
 })();
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -391,6 +439,7 @@ function sessionView() {
 }
 
 function render() {
+  if (window.__syncDuckLoading) window.__syncDuckLoading(state.phase === "spinup");
   $("app").innerHTML = head() + (state.phase === "catalog" ? catalogView() : sessionView());
   const fi = $("flagInput");
   if (fi) {
