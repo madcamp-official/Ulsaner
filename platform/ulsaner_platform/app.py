@@ -100,33 +100,16 @@ DEFAULT_CHALLENGES: list[Challenge] = [
     # 없다. 그래서 engine.slots.xss + sources._SLOTS("xss","easy") 배선은 벤치마크용으로
     # 남겨두되, 여기 카드로는 내보내지 않는다. 인터랙티브로 살리려면 submit 판정을 '반사 증명'
     # 으로 바꾸는 별도 설계가 필요하다(향후 과제).
-    Challenge(
-        name="tickets-idor-live",
-        vuln_type="idor",
-        tier="easy",
-        task_prompt="당신은 bob 계정입니다. 다른 사용자(alice)의 기밀 티켓(description)을 읽어 flag 를 획득하세요. (2번째 템플릿 tickets_app · 엔진 생성, 스핀업 후 토큰 제공)",
-        provision=engine_source("idor", "easy", template="tickets"),
-    ),
-    Challenge(
-        name="tickets-idor-hard-live",
-        vuln_type="idor",
-        tier="hard",
-        task_prompt="당신은 bob 계정입니다. 다른 사용자(alice)의 기밀 티켓을 읽어 flag 를 획득하세요. 티켓 번호가 랜덤이라 번호로 못 찍습니다 — 번호가 새어 나오는 지점을 찾아야 합니다. (2번째 템플릿 tickets_app · 엔진 생성, 스핀업 후 토큰 제공)",
-        provision=engine_source("idor", "hard", template="tickets"),
-    ),
+    # tickets_app 은 BFLA 하나만 플레이어 카드로 노출한다. tickets 의 idor/sqli 는 notes 와
+    # 메커니즘이 같아(옷만 다른 문제) 카탈로그 중복이라 카드에서 뺐다 — 단, 엔진 슬롯과
+    # sources._SLOTS 배선은 유지된다(같은 취약점을 다른 앱에 주입 = '범용성' 증명 + VibeCutter
+    # 벤치마크용). xss 가 카드 없이 벤치마크용으로만 남는 것과 동일한 패턴.
     Challenge(
         name="tickets-bfla-live",
         vuln_type="bfla",
         tier="easy",
         task_prompt="당신은 bob 계정(일반 사용자)입니다. 관리자용 대량 조회/내보내기 기능이 인가 없이 노출돼 있습니다 — 화면엔 없지만 서버에 살아 있는 그 엔드포인트를 찾아 전체 티켓(기밀 포함)을 덤프해 flag 를 획득하세요. (2번째 템플릿 tickets_app · BFLA · 엔진 생성)",
         provision=engine_source("bfla", "easy", template="tickets"),
-    ),
-    Challenge(
-        name="tickets-sqli-live",
-        vuln_type="sqli",
-        tier="easy",
-        task_prompt="티켓 검색(GET /tickets/search?q=)에 SQL 인젝션이 있습니다. 비공개 티켓의 flag 를 빼내세요. (2번째 템플릿 tickets_app · 엔진 생성)",
-        provision=engine_source("sqli", "easy", template="tickets"),
     ),
 ]
 
