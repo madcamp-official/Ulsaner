@@ -90,6 +90,16 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         "검색 결과 페이지(GET /notes/search/view)에 검색어가 이스케이프 없이 반사됩니다. <script> 페이로드가 원문 그대로 반영됨을 증명하세요(반사형 XSS).",
         "search_notes_view 가 검색어 q 를 html.escape 없이 HTML 에 삽입 — <script> 페이로드가 그대로 반사된다.",
     ),
+    ("jwt", "easy", "portal"): _SlotSpec(
+        "engine.slots.jwt_forge",
+        "build_jwt_forge_slot",
+        "계정 포털입니다. guest 계정으로 로그인하면(POST /login {\"username\":\"guest\"}) JWT 세션 토큰을 받습니다. "
+        "flag 는 관리자 전용 페이지(GET /admin/flag)에 있는데 당신은 일반 사용자입니다. "
+        "받은 토큰을 뜯어보고 관리자 권한을 얻을 방법을 찾아 flag 를 획득하세요.",
+        "JWT 서명 검증이 빠져(verify_token 의 서명 비교 제거), 서명값과 무관하게 payload(role:\"admin\")를 위조한 토큰이 통과한다 → 관리자 전용 /admin/flag 접근. 토큰 구조 분석·위조의 다단계 추론이 필요.",
+        template="portal",
+        health_check_path="/",
+    ),
     ("idor", "easy", "tickets"): _SlotSpec(
         "engine.slots.tickets",
         "build_tickets_easy_idor_slot",
@@ -110,28 +120,6 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         reorder_var_name="ticket",
         health_check_path="/tickets/2",
         seed_builder_attr="build_hard_seed_data",
-    ),
-    ("bfla", "easy", "tickets"): _SlotSpec(
-        "engine.slots.tickets",
-        "build_tickets_bfla_slot",
-        "당신은 bob 계정(일반 사용자)입니다 (요청 헤더 X-User-Token: {attacker_token}). "
-        "관리자용 '대량 조회/내보내기(export)' 기능이 인가 없이 노출돼 있습니다. 그 엔드포인트를 찾아 워크스페이스 전체 티켓(기밀 포함)을 덤프해 flag 를 획득하세요. "
-        "(힌트: 화면엔 없지만 티켓 관련 관리 기능이 서버에 살아 있습니다.)",
-        "관리자 전용이어야 할 대량조회 엔드포인트(GET /tickets/export)에 함수 레벨 인가가 빠져(BFLA) 일반 사용자가 기밀 티켓 전체를 덤프할 수 있다. IDOR(객체 id 열거)이 아니라 '숨은 특권 엔드포인트 발견'이 관건.",
-        template="tickets",
-        reorder_var_name="ticket",
-        health_check_path="/tickets/2",
-    ),
-    ("logic", "easy", "store"): _SlotSpec(
-        "engine.slots.store",
-        "build_store_logic_slot",
-        "당신은 포인트 상점 고객(잔액 100P)입니다 (요청 헤더 Authorization: Bearer {attacker_token}). "
-        "프리미엄 상품에 리워드(flag)가 걸려 있는데 9999P 라 잔액으론 못 삽니다. "
-        "구매 로직의 허점을 논리로 찾아 프리미엄 상품을 손에 넣어 flag 를 획득하세요.",
-        "구매가 총액=가격×수량 으로 잔액을 검사하는데 수량 양수 검증이 빠져(비즈니스 로직 결함), "
-        "음수 수량으로 총액을 음수로 만들면 잔액 검사를 통과해 프리미엄 상품(리워드=flag)을 살 수 있다.",
-        template="store",
-        health_check_path="/store/items",
     ),
     ("sqli", "easy", "tickets"): _SlotSpec(
         "engine.slots.tickets",
@@ -173,8 +161,8 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
     def provision() -> tuple[Path, Callable[[], None]]:
         # 엔진은 실제 생성 시점에만 임포트(무거운 libcst 등을 플랫폼 임포트 경로에서 분리).
         from engine.bundle import (
-            STORE_EXPLOIT_BUILDERS,
-            STORE_TEMPLATE_DIR,
+            PORTAL_EXPLOIT_BUILDERS,
+            PORTAL_TEMPLATE_DIR,
             TICKETS_EXPLOIT_BUILDERS,
             TICKETS_TEMPLATE_DIR,
             generate_bundle,
@@ -198,13 +186,13 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
             kwargs["seed_data_builder"] = getattr(
                 tickets_params, spec.seed_builder_attr or "build_seed_data"
             )
-        elif spec.template == "store":
-            from engine import store_params
+        elif spec.template == "portal":
+            from engine import portal_params
 
-            kwargs["template_dir"] = STORE_TEMPLATE_DIR
-            kwargs["exploit_builders"] = STORE_EXPLOIT_BUILDERS
+            kwargs["template_dir"] = PORTAL_TEMPLATE_DIR
+            kwargs["exploit_builders"] = PORTAL_EXPLOIT_BUILDERS
             kwargs["seed_data_builder"] = getattr(
-                store_params, spec.seed_builder_attr or "build_seed_data"
+                portal_params, spec.seed_builder_attr or "build_seed_data"
             )
         elif spec.seed_builder_attr:
             from engine import params

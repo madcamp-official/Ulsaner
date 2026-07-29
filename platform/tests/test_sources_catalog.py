@@ -150,8 +150,7 @@ def test_default_challenges_expose_new_classes():
     from ulsaner_platform.app import DEFAULT_CHALLENGES
 
     names = {c.name for c in DEFAULT_CHALLENGES}
-    # tickets 는 고유 클래스인 BFLA 만 카드로 노출한다(idor/sqli 는 notes 와 중복이라 제외).
-    assert {"hard-sqli-live", "tickets-bfla-live"} <= names
+    assert {"hard-sqli-live", "jwt-forge-live"} <= names
 
 
 def test_tickets_idor_sqli_wired_but_not_carded():
@@ -163,11 +162,9 @@ def test_tickets_idor_sqli_wired_but_not_carded():
     assert ("sqli", "easy", "tickets") in _SLOTS
     names = {c.name for c in DEFAULT_CHALLENGES}
     assert "tickets-idor-live" not in names
-    assert "tickets-idor-hard-live" not in names
     assert "tickets-sqli-live" not in names
-    # tickets 로 노출되는 카드는 BFLA 뿐
-    tickets_cards = [c for c in DEFAULT_CHALLENGES if c.name.startswith("tickets-")]
-    assert [c.name for c in tickets_cards] == ["tickets-bfla-live"]
+    # tickets 는 이제 어떤 카드도 노출하지 않는다(범용성/벤치마크 배선만 유지)
+    assert not any(c.name.startswith("tickets-") for c in DEFAULT_CHALLENGES)
 
 
 def test_xss_wired_but_not_exposed_as_interactive_card():

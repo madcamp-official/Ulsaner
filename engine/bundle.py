@@ -10,7 +10,7 @@ from .slots.base import Slot
 
 TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "notes_app"
 TICKETS_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "tickets_app"
-STORE_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "store_app"
+PORTAL_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "portal_app"
 SCHEMA_PATH = pathlib.Path(__file__).parent.parent / "contract" / "manifest_schema.json"
 
 _EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
@@ -23,11 +23,10 @@ _EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]
 TICKETS_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
     "idor": exploit_gen.build_tickets_idor_exploit,
     "sqli": exploit_gen.build_tickets_sqli_exploit,
-    "bfla": exploit_gen.build_tickets_bfla_exploit,
 }
 
-STORE_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
-    "logic": exploit_gen.build_store_logic_exploit,
+PORTAL_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
+    "jwt": exploit_gen.build_jwt_forge_exploit,
 }
 
 
