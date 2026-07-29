@@ -108,6 +108,13 @@ DEFAULT_CHALLENGES: list[Challenge] = [
         provision=engine_source("idor", "easy", template="tickets"),
     ),
     Challenge(
+        name="tickets-idor-hard-live",
+        vuln_type="idor",
+        tier="hard",
+        task_prompt="당신은 bob 계정입니다. 다른 사용자(alice)의 기밀 티켓을 읽어 flag 를 획득하세요. 티켓 번호가 랜덤이라 번호로 못 찍습니다 — 번호가 새어 나오는 지점을 찾아야 합니다. (2번째 템플릿 tickets_app · 엔진 생성, 스핀업 후 토큰 제공)",
+        provision=engine_source("idor", "hard", template="tickets"),
+    ),
+    Challenge(
         name="tickets-sqli-live",
         vuln_type="sqli",
         tier="easy",

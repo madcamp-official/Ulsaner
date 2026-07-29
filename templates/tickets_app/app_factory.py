@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routes import tickets, search
+from routes import tickets, search, ui
 
 
 def create_app() -> FastAPI:
@@ -8,4 +8,5 @@ def create_app() -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.include_router(search.router)
     app.include_router(tickets.router)
+    app.include_router(ui.router)  # 학생용 프론트엔드(취약 표면을 브라우징으로 노출). 슬롯 무관.
     return app

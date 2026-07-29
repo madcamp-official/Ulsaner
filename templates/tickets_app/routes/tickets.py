@@ -1,7 +1,13 @@
-from fastapi import APIRouter, HTTPException, Depends
 from db import get_current_user, get_ticket_by_id, list_tickets_in_workspace
+from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
+
+
+@router.get("/me")
+def me(user=Depends(get_current_user)):
+    # 프론트가 '내 티켓 vs 남의 티켓'을 구분하는 용도. 자기 신원만 알려준다.
+    return {"id": user.id, "name": user.name}
 
 
 @router.get("/tickets")
