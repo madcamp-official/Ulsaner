@@ -71,16 +71,11 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 .duck-jump-once { animation: duck-jump-once 0.5s cubic-bezier(.34,1.56,.64,1) 1; }
 .duck-jump-loop { animation: duck-jump-loop 0.55s ease-in-out infinite; }
 .duck-bad-walk { animation: duck-walk-2 8.5s ease-in-out infinite; }
-/* 스페이스바를 누르면 나쁜 오리만 화면 맨 위까지 점프한다. 점프 높이는 화면 크기마다
-   다르므로 --jump-dist 커스텀 프로퍼티를 JS가 매 점프 직전에 계산해서 넣어준다
-   (아래 script의 jumpBadDuckHigh). */
-@keyframes duck-jump-high {
-  0%   { transform: translateY(0); }
-  40%  { transform: translateY(var(--jump-dist, -400px)); }
-  60%  { transform: translateY(var(--jump-dist, -400px)); }
-  100% { transform: translateY(0); }
-}
-.duck-jump-high { animation: duck-jump-high 0.9s cubic-bezier(.34,1.2,.64,1) 1; }
+/* 스페이스바(또는 클릭)를 누를 때마다 나쁜 오리가 50px씩 위로 올라가고, 안
+   누르고 있으면 중력처럼 서서히 바닥으로 하강한다 — 한 번에 화면 맨 위까지
+   가는 게 아니라 여러 번 눌러야 도달한다. 값이 매 프레임 바뀌는 연속적인
+   물리 시뮬레이션이라 CSS 애니메이션이 아니라 JS가 매 프레임 style.transform을
+   직접 계산해서 설정한다(아래 script의 jumpBadDuckStep/badGravityStep). */
 /* 로딩(스핀업) 중엔 하단 100px 스트립 대신 화면 전체를 무대로 써서 오리들이
    정신없이 이곳저곳으로 날아다닌다. #duck-stage의 인라인 height:100px가
    클래스 규칙보다 항상 이기므로, 무대 확장/축소는 JS가 style.height를
@@ -166,44 +161,83 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 // 가로 이동/반전은 각 -wrap 요소가 맡고, 점프(translateY)는 안쪽 img만 담당해서
 // 두 애니메이션이 같은 transform 속성을 두고 충돌하지 않는다.
 (function () {
-  const jumpers = [document.getElementById("duck-normal"), document.getElementById("duck-bad")].filter(Boolean);
+  const normalImg = document.getElementById("duck-normal");
+  const badImg = document.getElementById("duck-bad");
+  const allDucks = [normalImg, badImg].filter(Boolean);
   const stage = document.getElementById("duck-stage");
   const normalWrap = document.getElementById("duck-normal-wrap");
   const badWrap = document.getElementById("duck-bad-wrap");
-  const badImg = document.getElementById("duck-bad");
-  jumpers.forEach((img) => {
-    img.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (img.classList.contains("duck-jump-loop") || img.classList.contains("duck-jump-high")) return; // 로딩/스페이스바 점프 중엔 클릭 점프 무시
-      img.classList.remove("duck-jump-once");
-      void img.offsetWidth; // 강제 리플로우로 같은 클래스 재적용 시에도 애니메이션 재시작
-      img.classList.add("duck-jump-once");
-    });
-    img.addEventListener("animationend", (e) => {
-      if (e.animationName === "duck-jump-once") img.classList.remove("duck-jump-once");
-      if (e.animationName === "duck-jump-high") img.classList.remove("duck-jump-high");
-    });
-  });
 
-  // 스페이스바 → 나쁜 오리만 화면 맨 위까지 점프. 점프 거리는 나쁜 오리의 현재
-  // 화면상 y좌표(getBoundingClientRect)에서 역산해서 매번 새로 계산한다 —
-  // 로딩 중 화면 전체를 날아다니는 동안엔 위치가 계속 바뀌기 때문.
-  function jumpBadDuckHigh() {
-    if (!badImg) return;
-    if (badImg.classList.contains("duck-jump-loop") || badImg.classList.contains("duck-jump-high")) return;
+  // 일반 오리는 기존대로 클릭하면 한 번 점프(로딩 중이면 무시).
+  if (normalImg) {
+    normalImg.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (normalImg.classList.contains("duck-jump-loop")) return;
+      normalImg.classList.remove("duck-jump-once");
+      void normalImg.offsetWidth; // 강제 리플로우로 같은 클래스 재적용 시에도 애니메이션 재시작
+      normalImg.classList.add("duck-jump-once");
+    });
+    normalImg.addEventListener("animationend", (e) => {
+      if (e.animationName === "duck-jump-once") normalImg.classList.remove("duck-jump-once");
+    });
+  }
+
+  // 나쁜 오리는 스페이스바(또는 클릭)를 누를 때마다 50px씩 위로 올라가고,
+  // 안 누르면 중력처럼 서서히 바닥으로 하강한다 — jumpBadDuckStep이 badY를
+  // 50px 증가시키고, badGravityStep(rAF 루프)이 매 프레임 badY를 줄여가며
+  // style.transform을 직접 갱신한다(같은 img의 transform이라 CSS 애니메이션과
+  // 겹치면 서로 덮어써서 값이 튀므로, 나쁜 오리는 이 JS 루프 하나만 transform을 건드린다).
+  const CLIMB_STEP = 50;
+  const FALL_SPEED = 220; // px/sec 하강 속도
+  let badY = 0, badRafId = null, badLastTs = null;
+
+  function badMaxClimb() {
+    // badImg.getBoundingClientRect()는 현재 translateY(-badY)가 반영된 값이므로
+    // + badY 를 더하면 badY=0(바닥)일 때의 top을 역산할 수 있다.
     const rect = badImg.getBoundingClientRect();
-    const dist = -(rect.top - 8); // 화면 맨 위에서 8px 여유를 두고 닿는 거리
-    badImg.style.setProperty("--jump-dist", dist + "px");
-    badImg.classList.remove("duck-jump-once");
-    void badImg.offsetWidth;
-    badImg.classList.add("duck-jump-high");
+    const restTop = rect.top + badY;
+    return Math.max(0, restTop - 8); // 화면 맨 위에서 8px 여유
+  }
+  function applyBadY() {
+    badImg.style.transform = badY > 0 ? `translateY(-${badY}px)` : "";
+  }
+  function badGravityStep(ts) {
+    if (badLastTs == null) badLastTs = ts;
+    const dt = (ts - badLastTs) / 1000;
+    badLastTs = ts;
+    badY = Math.max(0, badY - FALL_SPEED * dt);
+    applyBadY();
+    if (badY > 0) {
+      badRafId = requestAnimationFrame(badGravityStep);
+    } else {
+      badRafId = null; badLastTs = null;
+    }
+  }
+  function ensureGravityRunning() {
+    if (badRafId == null) { badLastTs = null; badRafId = requestAnimationFrame(badGravityStep); }
+  }
+  function resetBadClimb() {
+    badY = 0;
+    if (badRafId != null) { cancelAnimationFrame(badRafId); badRafId = null; }
+    badLastTs = null;
+    if (badImg) badImg.style.transform = "";
+  }
+  function jumpBadDuckStep() {
+    if (!badImg) return;
+    if (badImg.classList.contains("duck-jump-loop")) return; // 로딩 중엔 무시(그동안은 화면 전체를 날아다님)
+    badY = Math.min(badMaxClimb(), badY + CLIMB_STEP);
+    applyBadY();
+    ensureGravityRunning();
+  }
+  if (badImg) {
+    badImg.addEventListener("click", (e) => { e.stopPropagation(); jumpBadDuckStep(); });
   }
   document.addEventListener("keydown", (e) => {
     if (e.code !== "Space" && e.key !== " ") return;
     const tag = (document.activeElement && document.activeElement.tagName) || "";
     if (tag === "INPUT" || tag === "TEXTAREA") return; // 텍스트 입력 중엔 페이지 스크롤/타이핑 우선
     e.preventDefault();
-    jumpBadDuckHigh();
+    jumpBadDuckStep();
   });
 
   // 로딩(스핀업) 중엔 화면 전체를 무대로 써서 오리들이 정신없이 이곳저곳으로
@@ -231,6 +265,7 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
     // 인라인 height:100px가 CSS 클래스보다 항상 이기므로, 무대 확장은 JS로 직접 한다.
     if (stage) { stage.style.height = "100vh"; stage.classList.add("duck-stage-full"); }
     if (badWrap) { badWrap.classList.remove("duck-bad-walk"); badWrap.style.transform = ""; }
+    resetBadClimb(); // 로딩 중엔 화면 전체를 날아다니므로 남은 상승분을 없애고 넘긴다
     [normalWrap, badWrap].forEach((wrap) => { if (wrap) wrap.style.bottom = "auto"; });
     flyTick();
     flyTimer = setInterval(flyTick, 420);
@@ -242,12 +277,13 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
     if (stage) { stage.style.height = "100px"; stage.classList.remove("duck-stage-full"); }
     if (normalWrap) { normalWrap.style.top = ""; normalWrap.style.bottom = "0"; normalWrap.style.left = "22%"; normalWrap.style.transform = ""; }
     if (badWrap) { badWrap.style.top = ""; badWrap.style.bottom = "0"; badWrap.style.left = "58%"; badWrap.style.transform = ""; badWrap.classList.add("duck-bad-walk"); }
+    resetBadClimb(); // 착지 시 스페이스바로 쌓아둔 상승분도 함께 초기화
   }
 
   // 스핀업(로딩) 중엔 계속 점프 + 화면 전체를 날아다니고, 새 화면(실행 중 등)으로
   // 넘어가면 착지한다. render()가 phase 전환 때마다 호출되므로 여기서 매번 동기화한다.
   window.__syncDuckLoading = function (loading) {
-    jumpers.forEach((img) => {
+    allDucks.forEach((img) => {
       if (loading) { img.classList.remove("duck-jump-once"); img.classList.add("duck-jump-loop"); }
       else img.classList.remove("duck-jump-loop");
     });
