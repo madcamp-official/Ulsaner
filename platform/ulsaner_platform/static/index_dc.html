@@ -19,7 +19,14 @@
   --radius-md: 0px; --radius-lg: 0px;
 }
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+/* body를 세로 flex로 만들어 #duck-stage가 #app 아래에 실제 문서 흐름으로
+   붙는다: #app이 flex:1로 남는 공간을 채우므로, 콘텐츠가 화면보다 짧으면
+   오리 무대가 자연스럽게 화면 맨 아래에 오고(고정처럼 보임), 콘텐츠가 화면보다
+   길면 오리 무대는 그 아래로 밀려나 스크롤해야 보인다 — 어떤 경우에도 목록
+   콘텐츠와 절대 겹치지 않는다(예전엔 position:fixed라 짧은 창에서 목록 마지막
+   줄과 겹치는 문제가 있었다). 로딩 중 화면 전체를 나는 연출만 예외적으로
+   position:fixed로 전환한다(아래 script의 startFlying/stopFlying). */
+body { display: flex; flex-direction: column; min-height: 100vh; margin: 0; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
 body, h1, h2, h3, p, span, div, dt, dd, button, label { word-break: keep-all; overflow-wrap: break-word; }
 h1, h2, h3 { font-family: var(--font-heading); font-weight: var(--font-heading-weight); letter-spacing: -0.015em; margin: 0; }
 a { color: var(--color-accent-700); text-decoration: none; }
@@ -76,11 +83,11 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
    가는 게 아니라 여러 번 눌러야 도달한다. 값이 매 프레임 바뀌는 연속적인
    물리 시뮬레이션이라 CSS 애니메이션이 아니라 JS가 매 프레임 style.transform을
    직접 계산해서 설정한다(아래 script의 jumpBadDuckStep/badGravityStep). */
-/* 로딩(스핀업) 중엔 하단 100px 스트립 대신 화면 전체를 무대로 써서 오리들이
-   정신없이 이곳저곳으로 날아다닌다. #duck-stage의 인라인 height:100px가
-   클래스 규칙보다 항상 이기므로, 무대 확장/축소는 JS가 style.height를
-   직접 바꿔서 한다(script 쪽 startFlying/stopFlying) — .duck-stage-full은
-   순수 마커 클래스다. */
+/* 로딩(스핀업) 중엔 하단 100px 문서-흐름 스트립 대신 화면 전체를 무대로 써서
+   오리들이 정신없이 이곳저곳으로 날아다닌다. 이때만 JS(startFlying)가
+   position을 fixed·inset:0으로 바꿔 뷰포트 전체를 덮는 오버레이로 잠깐
+   전환하고, 로딩이 끝나면(stopFlying) 다시 relative·100px 문서-흐름으로
+   되돌린다 — .duck-stage-full은 순수 마커 클래스다. */
 /* 일반 오리를 빠르게 움직이면 진행 방향 뒤로 흩날리는 먼지 입자.
    컨테이너가 pointer-events:none·overflow:hidden 이라 클릭 방해 없이 하단 스트립에 갇힌다. */
 @keyframes duck-dust {
@@ -97,9 +104,9 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 </style>
 </head>
 <body>
-<div id="app" style="min-height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);"></div>
+<div id="app" style="flex:1 1 auto;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);"></div>
 
-<div id="duck-stage" aria-hidden="true" style="position:fixed;left:0;right:0;bottom:0;height:100px;pointer-events:none;overflow:hidden;z-index:9999;">
+<div id="duck-stage" aria-hidden="true" style="position:relative;flex:0 0 100px;height:100px;pointer-events:none;overflow:hidden;z-index:9999;">
   <div id="duck-normal-wrap" style="position:absolute;left:22%;bottom:0;transform-origin:center bottom;transition:left 0.32s ease-out, top 0.32s ease-out, transform 0.2s ease-out;">
     <img id="duck-normal" src="/assets/duck1.png" alt="" style="display:block;height:78px;width:auto;image-rendering:pixelated;transform-origin:center bottom;pointer-events:auto;cursor:pointer;" />
   </div>
@@ -262,8 +269,14 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
   function startFlying() {
     if (window.__duckFlying) return;
     window.__duckFlying = true;
-    // 인라인 height:100px가 CSS 클래스보다 항상 이기므로, 무대 확장은 JS로 직접 한다.
-    if (stage) { stage.style.height = "100vh"; stage.classList.add("duck-stage-full"); }
+    // 평소엔 문서 흐름에 붙은 relative·100px 요소지만, 로딩 중엔 잠깐
+    // position:fixed + inset:0으로 뷰포트 전체를 덮는 오버레이로 전환한다.
+    if (stage) {
+      stage.style.position = "fixed";
+      stage.style.top = "0"; stage.style.left = "0"; stage.style.right = "0"; stage.style.bottom = "0";
+      stage.style.flex = "none"; stage.style.height = "100vh";
+      stage.classList.add("duck-stage-full");
+    }
     if (badWrap) { badWrap.classList.remove("duck-bad-walk"); badWrap.style.transform = ""; }
     resetBadClimb(); // 로딩 중엔 화면 전체를 날아다니므로 남은 상승분을 없애고 넘긴다
     [normalWrap, badWrap].forEach((wrap) => { if (wrap) wrap.style.bottom = "auto"; });
@@ -274,7 +287,11 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
     if (!window.__duckFlying) return;
     window.__duckFlying = false;
     clearInterval(flyTimer); flyTimer = null;
-    if (stage) { stage.style.height = "100px"; stage.classList.remove("duck-stage-full"); }
+    if (stage) {
+      stage.style.position = "relative"; stage.style.top = ""; stage.style.left = ""; stage.style.right = ""; stage.style.bottom = "";
+      stage.style.flex = "0 0 100px"; stage.style.height = "100px";
+      stage.classList.remove("duck-stage-full");
+    }
     if (normalWrap) { normalWrap.style.top = ""; normalWrap.style.bottom = "0"; normalWrap.style.left = "22%"; normalWrap.style.transform = ""; }
     if (badWrap) { badWrap.style.top = ""; badWrap.style.bottom = "0"; badWrap.style.left = "58%"; badWrap.style.transform = ""; badWrap.classList.add("duck-bad-walk"); }
     resetBadClimb(); // 착지 시 스페이스바로 쌓아둔 상승분도 함께 초기화
