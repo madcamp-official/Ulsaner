@@ -71,6 +71,16 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 .duck-jump-once { animation: duck-jump-once 0.5s cubic-bezier(.34,1.56,.64,1) 1; }
 .duck-jump-loop { animation: duck-jump-loop 0.55s ease-in-out infinite; }
 .duck-bad-walk { animation: duck-walk-2 8.5s ease-in-out infinite; }
+/* 스페이스바를 누르면 나쁜 오리만 화면 맨 위까지 점프한다. 점프 높이는 화면 크기마다
+   다르므로 --jump-dist 커스텀 프로퍼티를 JS가 매 점프 직전에 계산해서 넣어준다
+   (아래 script의 jumpBadDuckHigh). */
+@keyframes duck-jump-high {
+  0%   { transform: translateY(0); }
+  40%  { transform: translateY(var(--jump-dist, -400px)); }
+  60%  { transform: translateY(var(--jump-dist, -400px)); }
+  100% { transform: translateY(0); }
+}
+.duck-jump-high { animation: duck-jump-high 0.9s cubic-bezier(.34,1.2,.64,1) 1; }
 /* 로딩(스핀업) 중엔 하단 100px 스트립 대신 화면 전체를 무대로 써서 오리들이
    정신없이 이곳저곳으로 날아다닌다. #duck-stage의 인라인 height:100px가
    클래스 규칙보다 항상 이기므로, 무대 확장/축소는 JS가 style.height를
@@ -160,17 +170,40 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
   const stage = document.getElementById("duck-stage");
   const normalWrap = document.getElementById("duck-normal-wrap");
   const badWrap = document.getElementById("duck-bad-wrap");
+  const badImg = document.getElementById("duck-bad");
   jumpers.forEach((img) => {
     img.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (img.classList.contains("duck-jump-loop")) return; // 로딩 점프 중엔 클릭 점프 무시
+      if (img.classList.contains("duck-jump-loop") || img.classList.contains("duck-jump-high")) return; // 로딩/스페이스바 점프 중엔 클릭 점프 무시
       img.classList.remove("duck-jump-once");
       void img.offsetWidth; // 강제 리플로우로 같은 클래스 재적용 시에도 애니메이션 재시작
       img.classList.add("duck-jump-once");
     });
     img.addEventListener("animationend", (e) => {
       if (e.animationName === "duck-jump-once") img.classList.remove("duck-jump-once");
+      if (e.animationName === "duck-jump-high") img.classList.remove("duck-jump-high");
     });
+  });
+
+  // 스페이스바 → 나쁜 오리만 화면 맨 위까지 점프. 점프 거리는 나쁜 오리의 현재
+  // 화면상 y좌표(getBoundingClientRect)에서 역산해서 매번 새로 계산한다 —
+  // 로딩 중 화면 전체를 날아다니는 동안엔 위치가 계속 바뀌기 때문.
+  function jumpBadDuckHigh() {
+    if (!badImg) return;
+    if (badImg.classList.contains("duck-jump-loop") || badImg.classList.contains("duck-jump-high")) return;
+    const rect = badImg.getBoundingClientRect();
+    const dist = -(rect.top - 8); // 화면 맨 위에서 8px 여유를 두고 닿는 거리
+    badImg.style.setProperty("--jump-dist", dist + "px");
+    badImg.classList.remove("duck-jump-once");
+    void badImg.offsetWidth;
+    badImg.classList.add("duck-jump-high");
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.code !== "Space" && e.key !== " ") return;
+    const tag = (document.activeElement && document.activeElement.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA") return; // 텍스트 입력 중엔 페이지 스크롤/타이핑 우선
+    e.preventDefault();
+    jumpBadDuckHigh();
   });
 
   // 로딩(스핀업) 중엔 화면 전체를 무대로 써서 오리들이 정신없이 이곳저곳으로
