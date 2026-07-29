@@ -12,6 +12,7 @@ TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "notes_app"
 TICKETS_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "tickets_app"
 PORTAL_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "portal_app"
 ACCOUNTS_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "accounts_app"
+GATEWAY_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "gateway_app"
 SCHEMA_PATH = pathlib.Path(__file__).parent.parent / "contract" / "manifest_schema.json"
 
 _EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
@@ -32,6 +33,10 @@ PORTAL_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceEx
 
 ACCOUNTS_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
     "takeover": exploit_gen.build_account_takeover_exploit,
+}
+
+GATEWAY_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
+    "ssrf": exploit_gen.build_ssrf_pivot_exploit,
 }
 
 

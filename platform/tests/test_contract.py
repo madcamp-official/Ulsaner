@@ -78,9 +78,9 @@ def test_required_field_missing_is_rejected(missing):
 
 def test_unknown_vuln_type_is_rejected():
     # enum 밖의 값이어야 한다. xss/hard_sqli 는 계약에 추가돼(엔진 PR #27) 이제 유효하므로
-    # 아직 계약에 없는 클래스(ssrf)로 '알 수 없는 vuln_type' 을 검증한다.
+    # 아직 계약에 없는 클래스(xxe)로 '알 수 없는 vuln_type' 을 검증한다.
     with pytest.raises(ValidationError):
-        validator().validate(with_change(vuln_type="ssrf"))
+        validator().validate(with_change(vuln_type="xxe"))
 
 
 def test_unknown_tier_is_rejected():
