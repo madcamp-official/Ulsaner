@@ -1,0 +1,8 @@
+{
+  "reset_salt": "a1b2c3d4e5f60718",
+  "flag": "FLAG{example}",
+  "users": [
+    {"username": "guest", "password": "guest", "role": "user"},
+    {"username": "admin", "password": "s3cr3t-admin-pw", "role": "admin"}
+  ]
+}
