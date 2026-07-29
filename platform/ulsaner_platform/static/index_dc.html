@@ -70,6 +70,12 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 }
 .duck-jump-once { animation: duck-jump-once 0.5s cubic-bezier(.34,1.56,.64,1) 1; }
 .duck-jump-loop { animation: duck-jump-loop 0.55s ease-in-out infinite; }
+.duck-bad-walk { animation: duck-walk-2 8.5s ease-in-out infinite; }
+/* 로딩(스핀업) 중엔 하단 100px 스트립 대신 화면 전체를 무대로 써서 오리들이
+   정신없이 이곳저곳으로 날아다닌다. #duck-stage의 인라인 height:100px가
+   클래스 규칙보다 항상 이기므로, 무대 확장/축소는 JS가 style.height를
+   직접 바꿔서 한다(script 쪽 startFlying/stopFlying) — .duck-stage-full은
+   순수 마커 클래스다. */
 /* 일반 오리를 빠르게 움직이면 진행 방향 뒤로 흩날리는 먼지 입자.
    컨테이너가 pointer-events:none·overflow:hidden 이라 클릭 방해 없이 하단 스트립에 갇힌다. */
 @keyframes duck-dust {
@@ -89,10 +95,10 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 <div id="app" style="min-height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);"></div>
 
 <div id="duck-stage" aria-hidden="true" style="position:fixed;left:0;right:0;bottom:0;height:100px;pointer-events:none;overflow:hidden;z-index:1;">
-  <div id="duck-normal-wrap" style="position:absolute;left:22%;bottom:0;transform-origin:center bottom;transition:left 0.25s ease-out, transform 0.2s ease-out;">
+  <div id="duck-normal-wrap" style="position:absolute;left:22%;bottom:0;transform-origin:center bottom;transition:left 0.32s ease-out, top 0.32s ease-out, transform 0.2s ease-out;">
     <img id="duck-normal" src="/assets/duck1.png" alt="" style="display:block;height:78px;width:auto;image-rendering:pixelated;transform-origin:center bottom;pointer-events:auto;cursor:pointer;" />
   </div>
-  <div id="duck-bad-wrap" style="position:absolute;left:58%;bottom:0;transform-origin:center bottom;animation:duck-walk-2 8.5s ease-in-out infinite;">
+  <div id="duck-bad-wrap" class="duck-bad-walk" style="position:absolute;left:58%;bottom:0;transform-origin:center bottom;transition:left 0.32s ease-out, top 0.32s ease-out, transform 0.2s ease-out;">
     <img id="duck-bad" src="/assets/duck2.png" alt="" style="display:block;height:88px;width:auto;image-rendering:pixelated;transform-origin:center bottom;pointer-events:auto;cursor:pointer;" />
   </div>
 </div>
@@ -126,6 +132,7 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
   }
 
   document.addEventListener("mousemove", (e) => {
+    if (window.__duckFlying) return; // 로딩 중엔 화면 전체를 날아다니므로 마우스 추적을 잠시 끈다
     const now = e.timeStamp || performance.now();
     const w = wrap.offsetWidth || 60;
     const maxLeft = Math.max(0, window.innerWidth - w);
@@ -150,6 +157,9 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 // 두 애니메이션이 같은 transform 속성을 두고 충돌하지 않는다.
 (function () {
   const jumpers = [document.getElementById("duck-normal"), document.getElementById("duck-bad")].filter(Boolean);
+  const stage = document.getElementById("duck-stage");
+  const normalWrap = document.getElementById("duck-normal-wrap");
+  const badWrap = document.getElementById("duck-bad-wrap");
   jumpers.forEach((img) => {
     img.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -163,13 +173,52 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
     });
   });
 
-  // 스핀업(로딩) 중엔 계속 점프, 새 화면(실행 중 등)으로 넘어가면 착지.
-  // render()가 phase 전환 때마다 호출되므로 여기서 매번 동기화한다.
+  // 로딩(스핀업) 중엔 화면 전체를 무대로 써서 오리들이 정신없이 이곳저곳으로
+  // 날아다닌다. 마우스 추적/나쁜 오리의 자동 걷기는 그동안 잠시 멈춘다.
+  let flyTimer = null;
+  function randomSpotFor(wrap) {
+    const w = wrap.offsetWidth || 60, h = wrap.offsetHeight || 60;
+    const maxLeft = Math.max(0, window.innerWidth - w);
+    const maxTop = Math.max(0, window.innerHeight - h - 8);
+    return { left: Math.random() * maxLeft, top: Math.random() * maxTop };
+  }
+  function flyTick() {
+    [normalWrap, badWrap].forEach((wrap) => {
+      if (!wrap) return;
+      const prevLeft = parseFloat(wrap.style.left) || 0;
+      const spot = randomSpotFor(wrap);
+      wrap.style.top = spot.top + "px";
+      wrap.style.left = spot.left + "px";
+      wrap.style.transform = spot.left > prevLeft ? "scaleX(-1)" : "scaleX(1)";
+    });
+  }
+  function startFlying() {
+    if (window.__duckFlying) return;
+    window.__duckFlying = true;
+    // 인라인 height:100px가 CSS 클래스보다 항상 이기므로, 무대 확장은 JS로 직접 한다.
+    if (stage) { stage.style.height = "100vh"; stage.classList.add("duck-stage-full"); }
+    if (badWrap) { badWrap.classList.remove("duck-bad-walk"); badWrap.style.transform = ""; }
+    [normalWrap, badWrap].forEach((wrap) => { if (wrap) wrap.style.bottom = "auto"; });
+    flyTick();
+    flyTimer = setInterval(flyTick, 420);
+  }
+  function stopFlying() {
+    if (!window.__duckFlying) return;
+    window.__duckFlying = false;
+    clearInterval(flyTimer); flyTimer = null;
+    if (stage) { stage.style.height = "100px"; stage.classList.remove("duck-stage-full"); }
+    if (normalWrap) { normalWrap.style.top = ""; normalWrap.style.bottom = "0"; normalWrap.style.left = "22%"; normalWrap.style.transform = ""; }
+    if (badWrap) { badWrap.style.top = ""; badWrap.style.bottom = "0"; badWrap.style.left = "58%"; badWrap.style.transform = ""; badWrap.classList.add("duck-bad-walk"); }
+  }
+
+  // 스핀업(로딩) 중엔 계속 점프 + 화면 전체를 날아다니고, 새 화면(실행 중 등)으로
+  // 넘어가면 착지한다. render()가 phase 전환 때마다 호출되므로 여기서 매번 동기화한다.
   window.__syncDuckLoading = function (loading) {
     jumpers.forEach((img) => {
       if (loading) { img.classList.remove("duck-jump-once"); img.classList.add("duck-jump-loop"); }
       else img.classList.remove("duck-jump-loop");
     });
+    if (loading) startFlying(); else stopFlying();
   };
 })();
 const $ = (id) => document.getElementById(id);
