@@ -1,6 +1,7 @@
 import json
 import pathlib
 import sqlite3
+
 from fastapi import Header, HTTPException
 
 _SEED_PATH = pathlib.Path(__file__).parent / "seed_data.json"
@@ -17,11 +18,12 @@ _TICKETS_BY_ID = {t["id"]: t for t in _SEED["tickets"]}
 
 
 class User:
-    def __init__(self, id, token, name, workspace_id):
+    def __init__(self, id, token, name, workspace_id, is_admin=False):
         self.id = id
         self.token = token
         self.name = name
         self.workspace_id = workspace_id
+        self.is_admin = is_admin  # 대량조회(export)는 관리자 전용 — 일반 사용자는 False
 
 
 class Ticket:
