@@ -100,23 +100,14 @@ DEFAULT_CHALLENGES: list[Challenge] = [
     # 없다. 그래서 engine.slots.xss + sources._SLOTS("xss","easy") 배선은 벤치마크용으로
     # 남겨두되, 여기 카드로는 내보내지 않는다. 인터랙티브로 살리려면 submit 판정을 '반사 증명'
     # 으로 바꾸는 별도 설계가 필요하다(향후 과제).
-    # tickets_app 은 BFLA 하나만 플레이어 카드로 노출한다. tickets 의 idor/sqli 는 notes 와
-    # 메커니즘이 같아(옷만 다른 문제) 카탈로그 중복이라 카드에서 뺐다 — 단, 엔진 슬롯과
-    # sources._SLOTS 배선은 유지된다(같은 취약점을 다른 앱에 주입 = '범용성' 증명 + VibeCutter
-    # 벤치마크용). xss 가 카드 없이 벤치마크용으로만 남는 것과 동일한 패턴.
+    # tickets 의 idor/sqli 는 notes 와 메커니즘이 같아(옷만 다른 문제) 카드에서 뺐다 — 엔진 슬롯·
+    # sources._SLOTS 배선은 '범용성' 증명 + VibeCutter 벤치마크용으로 유지(xss 와 동일 패턴).
     Challenge(
-        name="tickets-bfla-live",
-        vuln_type="bfla",
+        name="jwt-forge-live",
+        vuln_type="jwt",
         tier="easy",
-        task_prompt="당신은 bob 계정(일반 사용자)입니다. 관리자용 대량 조회/내보내기 기능이 인가 없이 노출돼 있습니다 — 화면엔 없지만 서버에 살아 있는 그 엔드포인트를 찾아 전체 티켓(기밀 포함)을 덤프해 flag 를 획득하세요. (2번째 템플릿 tickets_app · BFLA · 엔진 생성)",
-        provision=engine_source("bfla", "easy", template="tickets"),
-    ),
-    Challenge(
-        name="store-logic-live",
-        vuln_type="logic",
-        tier="easy",
-        task_prompt="포인트 상점 고객(잔액 100P)입니다. 프리미엄 상품에 flag 리워드가 걸려 있는데 9999P 라 잔액으론 못 삽니다. 구매 로직의 허점을 논리로 찾아 프리미엄 상품을 손에 넣어 flag 를 획득하세요. (3번째 템플릿 store_app · 비즈니스 로직 결함 · 엔진 생성)",
-        provision=engine_source("logic", "easy", template="store"),
+        task_prompt="계정 포털입니다. guest 계정으로 로그인하면 JWT 세션 토큰을 받습니다. flag 는 관리자 전용 페이지에 있는데 당신은 일반 사용자예요. 받은 토큰을 뜯어보고 관리자 권한을 얻을 방법을 찾아 flag 를 획득하세요. (3번째 템플릿 portal_app · JWT 위조 · 엔진 생성)",
+        provision=engine_source("jwt", "easy", template="portal"),
     ),
 ]
 

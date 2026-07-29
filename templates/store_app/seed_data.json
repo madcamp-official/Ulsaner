@@ -1,9 +1,0 @@
-{
-  "users": [
-    {"id": 1, "token": "token-shopper", "name": "shopper", "balance": 100}
-  ],
-  "items": [
-    {"id": 1, "name": "스티커 팩", "price": 10, "secret": ""},
-    {"id": 2, "name": "한정판 골드 배지", "price": 9999, "secret": "FLAG{example}"}
-  ]
-}
