@@ -13,6 +13,13 @@ def list_notes(user=Depends(get_current_user)):
     ]
 
 
+@router.get("/me")
+def whoami(user=Depends(get_current_user)):
+    # 현재 로그인 사용자 신원(프론트가 '내 노트 vs 남의 노트'를 구분하는 용도).
+    # 자기 자신의 id/name 만 노출한다 — 자격증명·flag 는 포함하지 않는다.
+    return {"id": user.id, "name": user.name}
+
+
 @router.get("/notes/{note_id}")
 def get_note(note_id: int, user=Depends(get_current_user)):
     note = get_note_by_id(note_id)
