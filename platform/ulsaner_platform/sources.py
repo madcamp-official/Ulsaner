@@ -102,11 +102,14 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
     ("idor", "hard", "tickets"): _SlotSpec(
         "engine.slots.tickets",
         "build_tickets_hard_idor_slot",
-        "당신은 bob 계정입니다 (요청 헤더 X-User-Token: {attacker_token}). 다른 사용자(alice)의 기밀 티켓(description)을 읽어 그 안에 심긴 flag 를 획득하세요.",
-        "소유권 비교가 workspace 스코프로 뒤바뀌어 같은 workspace 면 통과되는 IDOR(하드 · 2번째 템플릿).",
+        "당신은 bob 계정입니다 (요청 헤더 X-User-Token: {attacker_token}). 다른 사용자(alice)의 기밀 티켓(description)을 읽어 flag 를 획득하세요. "
+        "주의: 티켓 번호는 추측할 수 없는 랜덤 값이라 번호를 눌러보는 것으로는 못 찾습니다. 앱이 노출하는 정보 어딘가에서 다른 티켓의 번호가 새어 나옵니다 — 그 유출 지점을 찾아 피해자 티켓 번호를 알아낸 뒤 여세요.",
+        "티켓 id 가 랜덤이라 열거 불가 + get_ticket 의 소유권 검증이 workspace 스코프로 변형됨(정적분석 회피). "
+        "GET /tickets 목록이 워크스페이스 전체 티켓 id 를 흘리는 걸 이용해 피해자 티켓 id 를 얻어 IDOR — '유출 발견 → 악용' 2단계.",
         template="tickets",
         reorder_var_name="ticket",
         health_check_path="/tickets/2",
+        seed_builder_attr="build_hard_seed_data",
     ),
     ("sqli", "easy", "tickets"): _SlotSpec(
         "engine.slots.tickets",
@@ -161,14 +164,17 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
             "reorder_var_name": spec.reorder_var_name,
             "health_check_path": spec.health_check_path,
         }
+        # seed 빌더는 템플릿별 모듈에서 해석한다: tickets 는 tickets_params, notes 는 params.
+        # seed_builder_attr 이 있으면 그 빌더(하드=랜덤 id 등)를, 없으면 각 템플릿 기본을 쓴다.
         if spec.template == "tickets":
             from engine import tickets_params
 
             kwargs["template_dir"] = TICKETS_TEMPLATE_DIR
             kwargs["exploit_builders"] = TICKETS_EXPLOIT_BUILDERS
-            kwargs["seed_data_builder"] = tickets_params.build_seed_data
-        if spec.seed_builder_attr:
-            # 하드 IDOR 등 커스텀 seed(랜덤 id)를 engine.params 에서 지연 해석해 넘긴다.
+            kwargs["seed_data_builder"] = getattr(
+                tickets_params, spec.seed_builder_attr or "build_seed_data"
+            )
+        elif spec.seed_builder_attr:
             from engine import params
 
             kwargs["seed_data_builder"] = getattr(params, spec.seed_builder_attr)
