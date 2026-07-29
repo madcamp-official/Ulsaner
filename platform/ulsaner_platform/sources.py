@@ -50,6 +50,7 @@ class _SlotSpec:
     template: str = "notes"  # "notes" | "tickets" — 어떤 템플릿 앱에 주입하는가
     reorder_var_name: str = "note"  # 하드 티어 지역변수 리네임 대상(tickets 는 "ticket")
     health_check_path: str = "/notes/2"  # 자가검증 기동 대기용 헬스 경로
+    seed_builder_attr: str | None = None  # engine.params 의 커스텀 seed 빌더명(하드=랜덤 id 등). None 이면 기본
 
 
 # (vuln_type, tier, template) -> _SlotSpec.
@@ -65,8 +66,11 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
     ("idor", "hard", "notes"): _SlotSpec(
         "engine.slots.hard_idor",
         "build_hard_idor_slot",
-        "당신은 bob 계정입니다 (요청 헤더 Authorization: Bearer {attacker_token}). 다른 사용자(alice)의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
-        "소유권 비교 로직이 변형돼 정적분석으로는 잘 안 잡히는 IDOR(하드 티어).",
+        "당신은 bob 계정입니다 (요청 헤더 Authorization: Bearer {attacker_token}). 다른 사용자(alice)의 비공개 노트를 읽어 flag 를 획득하세요. "
+        "주의: 노트 id 는 추측할 수 없는 랜덤 값이라 번호를 눌러보는 것으로는 못 찾습니다. 앱이 노출하는 정보 어딘가에서 다른 노트의 id 가 새어 나옵니다 — 그 유출 지점을 찾아 피해자 노트 id 를 알아낸 뒤 열으세요.",
+        "노트 id 가 랜덤이라 열거 불가 + get_note 의 소유권 검증이 workspace 스코프로 변형됨(정적분석 회피). "
+        "GET /notes 목록이 워크스페이스 전체 노트 id 를 흘리는 걸 이용해 피해자 노트 id 를 얻어 IDOR — '유출 발견 → 악용' 2단계.",
+        seed_builder_attr="build_hard_seed_data",
     ),
     ("sqli", "easy", "notes"): _SlotSpec(
         "engine.slots.easy_sqli",
@@ -163,6 +167,11 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
             kwargs["template_dir"] = TICKETS_TEMPLATE_DIR
             kwargs["exploit_builders"] = TICKETS_EXPLOIT_BUILDERS
             kwargs["seed_data_builder"] = tickets_params.build_seed_data
+        if spec.seed_builder_attr:
+            # 하드 IDOR 등 커스텀 seed(랜덤 id)를 engine.params 에서 지연 해석해 넘긴다.
+            from engine import params
+
+            kwargs["seed_data_builder"] = getattr(params, spec.seed_builder_attr)
 
         tmp = Path(tempfile.mkdtemp(prefix="ulsaner-bundle-"))
 

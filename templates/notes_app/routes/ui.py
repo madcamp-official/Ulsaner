@@ -161,11 +161,12 @@ async function loadMyNotes(){
   const {ok,data}=await req("/notes",{headers:authHeaders()});
   if(!ok){ logout(); return; }
   noteMeta={}; (data||[]).forEach(n=>{ noteMeta[n.id]=n; });
-  renderMyNotes((data||[]).filter(n=>me&&n.owner_id===me.id));
+  const all=(data||[]); const mine=all.filter(n=>me&&n.owner_id===me.id);
+  renderMyNotes(mine, all.length);
 }
-function renderMyNotes(mine){
+function renderMyNotes(mine, total){
   const box=$("myNotes"); box.textContent="";
-  if(!mine.length){ box.appendChild(el("p","hint","(작성한 노트가 없습니다)")); return; }
+  if(!mine.length){ box.appendChild(el("p","hint","(작성한 노트가 없습니다)")); }
   mine.forEach(n=>{
     const card=el("div","note");
     card.appendChild(el("span","id","#"+n.id));
@@ -174,6 +175,11 @@ function renderMyNotes(mine){
     card.onclick=()=>openNote(n.id);
     box.appendChild(card);
   });
+  // 이 목록 응답엔 내 노트 말고 워크스페이스의 다른 노트도 들어 있다(메타데이터).
+  // 화면엔 내 것만 그리지만, 총계를 알려줘 '다른 노트가 있다'는 걸 눈치채게 한다 —
+  // 남의 노트 id 를 어디서 얻을지 스스로 파고들도록(하드 난이도의 실마리).
+  const others=(total||mine.length)-mine.length;
+  if(others>0){ box.appendChild(el("p","hint","이 워크스페이스에는 다른 사용자의 노트 "+others+"개가 더 있습니다. (목록 응답에 포함되어 있습니다)")); }
 }
 
 async function openNote(id){
