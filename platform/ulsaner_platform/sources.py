@@ -111,6 +111,17 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         health_check_path="/tickets/2",
         seed_builder_attr="build_hard_seed_data",
     ),
+    ("bfla", "easy", "tickets"): _SlotSpec(
+        "engine.slots.tickets",
+        "build_tickets_bfla_slot",
+        "당신은 bob 계정(일반 사용자)입니다 (요청 헤더 X-User-Token: {attacker_token}). "
+        "관리자용 '대량 조회/내보내기(export)' 기능이 인가 없이 노출돼 있습니다. 그 엔드포인트를 찾아 워크스페이스 전체 티켓(기밀 포함)을 덤프해 flag 를 획득하세요. "
+        "(힌트: 화면엔 없지만 티켓 관련 관리 기능이 서버에 살아 있습니다.)",
+        "관리자 전용이어야 할 대량조회 엔드포인트(GET /tickets/export)에 함수 레벨 인가가 빠져(BFLA) 일반 사용자가 기밀 티켓 전체를 덤프할 수 있다. IDOR(객체 id 열거)이 아니라 '숨은 특권 엔드포인트 발견'이 관건.",
+        template="tickets",
+        reorder_var_name="ticket",
+        health_check_path="/tickets/2",
+    ),
     ("sqli", "easy", "tickets"): _SlotSpec(
         "engine.slots.tickets",
         "build_tickets_easy_sqli_slot",
