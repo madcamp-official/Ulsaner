@@ -73,10 +73,11 @@ _PAGE = """<!doctype html>
     <p class="hint">공개 노트를 제목으로 찾습니다.</p>
     <details><summary>고급 검색</summary>
       <div class="row" style="margin-top:8px">
-        <input type="text" id="aq" placeholder="q" autocomplete="off" spellcheck="false">
-        <input type="text" id="aexclude" placeholder="exclude (제외할 제목)" autocomplete="off" spellcheck="false">
+        <input type="text" id="aq" placeholder="검색어" autocomplete="off" spellcheck="false">
+        <input type="text" id="aexclude" placeholder="제외할 제목" autocomplete="off" spellcheck="false">
         <button id="advBtn">검색</button>
       </div>
+      <p class="hint">키워드로 찾고, 특정 제목은 결과에서 제외합니다.</p>
     </details>
     <div class="out" id="searchOut"></div>
   </div>
@@ -86,7 +87,7 @@ _PAGE = """<!doctype html>
     <div id="loginBox">
       <p class="hint">내 노트를 보려면 액세스 토큰으로 로그인하세요.</p>
       <div class="row">
-        <input type="password" id="token" placeholder="액세스 토큰 (예: Bearer token-xxxx 의 token-xxxx)" autocomplete="off" spellcheck="false">
+        <input type="password" id="token" placeholder="액세스 토큰" autocomplete="off" spellcheck="false">
         <button class="primary" id="loginBtn">로그인</button>
       </div>
       <p class="hint" id="loginErr" style="color:var(--danger);display:none"></p>
@@ -95,8 +96,8 @@ _PAGE = """<!doctype html>
   </div>
 
   <div class="panel" id="openerPanel" style="display:none">
-    <h2>노트 열기</h2>
-    <p class="hint">노트를 번호로 조회합니다. <code>GET /notes/{번호}</code></p>
+    <h2>노트 바로가기</h2>
+    <p class="hint">노트 번호를 알고 있다면 바로 엽니다.</p>
     <div class="row">
       <input type="number" id="openId" class="w120" placeholder="노트 번호" min="1">
       <button id="openBtn">열기</button>
@@ -175,26 +176,23 @@ function renderMyNotes(mine, total){
     card.onclick=()=>openNote(n.id);
     box.appendChild(card);
   });
-  // 이 목록 응답엔 내 노트 말고 워크스페이스의 다른 노트도 들어 있다(메타데이터).
-  // 화면엔 내 것만 그리지만, 총계를 알려줘 '다른 노트가 있다'는 걸 눈치채게 한다 —
-  // 남의 노트 id 를 어디서 얻을지 스스로 파고들도록(하드 난이도의 실마리).
-  const others=(total||mine.length)-mine.length;
-  if(others>0){ box.appendChild(el("p","hint","이 워크스페이스에는 다른 사용자의 노트 "+others+"개가 더 있습니다. (목록 응답에 포함되어 있습니다)")); }
+  // 워크스페이스 개요 스탯(실제 제품처럼). 총 노트 수가 내 노트보다 많다는 사실 자체가
+  // 자연스러운 정보 노출 — '내가 못 보는 노트가 있네'를 눈치채게 하되, 어디서 그 id 를
+  // 얻는지(=목록 응답이 흘린다)는 스포일러 없이 스스로 파악하게 둔다.
+  box.appendChild(el("p","hint","워크스페이스 노트 "+(total||mine.length)+"개 · 내 노트 "+mine.length+"개"));
 }
 
 async function openNote(id){
   id=parseInt(id,10); if(!id)return;
   const d=$("detail"); d.style.display="block"; d.textContent="";
-  d.appendChild(el("div","path","GET /notes/"+id));
   const {ok,status,data}=await req("/notes/"+id,{headers:authHeaders()});
-  if(!ok){ d.appendChild(el("div","hint","🚫 열람 실패 (HTTP "+status+")"+(status===403?" — 당신 소유가 아닙니다.":status===404?" — 그런 노트가 없습니다.":""))); return; }
+  if(!ok){ d.appendChild(el("div","hint",status===404?"그런 노트가 없습니다.":status===403?"열람 권한이 없습니다.":"열람 실패 ("+status+")")); return; }
   d.appendChild(el("strong",null,data.title||("노트 #"+id)));
-  d.appendChild(el("div","body",data.body!=null?data.body:"(본문 없음)"));
+  // 자연스러운 '작성자' 줄. 실제 노트 앱처럼 작성자를 보여줄 뿐이지만, 남의 노트를 열면
+  // '작성자 #1(내가 아님)'이 뜨는 게 유일한 단서 — 'IDOR' 같은 훈련용 문구는 쓰지 않는다.
   const meta=noteMeta[id];
-  if(me && meta && meta.owner_id!==me.id){
-    // 내 것이 아닌 노트의 본문이 소유권 검증 없이 열렸다 = IDOR 를 스스로 발견한 것.
-    d.appendChild(el("div","idor","⚠️ 이 노트(owner #"+meta.owner_id+")는 당신 소유가 아닙니다. 소유권 검증 없이 본문이 열렸습니다 — IDOR."));
-  }
+  if(meta){ d.appendChild(el("div","hint","작성자 #"+meta.owner_id+(me&&meta.owner_id===me.id?" · 나":""))); }
+  d.appendChild(el("div","body",data.body!=null?data.body:"(본문 없음)"));
 }
 $("openBtn").onclick=()=>openNote($("openId").value);
 $("openId").addEventListener("keydown",e=>{if(e.key==="Enter")openNote($("openId").value);});
