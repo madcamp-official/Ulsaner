@@ -90,6 +90,18 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         "검색 결과 페이지(GET /notes/search/view)에 검색어가 이스케이프 없이 반사됩니다. <script> 페이로드가 원문 그대로 반영됨을 증명하세요(반사형 XSS).",
         "search_notes_view 가 검색어 q 를 html.escape 없이 HTML 에 삽입 — <script> 페이로드가 그대로 반사된다.",
     ),
+    ("takeover", "hard", "accounts"): _SlotSpec(
+        "engine.slots.reset_token",
+        "build_reset_token_slot",
+        "계정 관리 포털입니다. guest / guest 로 로그인할 수 있고, flag 는 관리자(admin)만 보는 페이지에 있습니다. "
+        "admin 의 비밀번호는 모릅니다 — 비밀번호 재설정 흐름의 허점을 파고들어 관리자 계정을 탈취하세요. "
+        "힌트: 재설정 토큰이 어떻게 만들어지는지, 내 계정으로 먼저 관찰해 규칙을 알아내세요.",
+        "재설정 토큰이 예측 가능(md5(username+salt))하게 생성된다. 학생은 (1) 사용자 목록에서 admin 확인 "
+        "(2) 내 계정 재설정 메일에서 토큰·salt 관찰 (3) 토큰=md5(username+salt) 역추론 (4) admin 토큰 계산·위조 "
+        "(5) admin 비번 재설정→로그인→flag. 여러 단계를 관찰·추론·연결해야 풀리는 계정 탈취 체인.",
+        template="accounts",
+        health_check_path="/users",
+    ),
     ("jwt", "easy", "portal"): _SlotSpec(
         "engine.slots.jwt_forge",
         "build_jwt_forge_slot",
@@ -161,6 +173,8 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
     def provision() -> tuple[Path, Callable[[], None]]:
         # 엔진은 실제 생성 시점에만 임포트(무거운 libcst 등을 플랫폼 임포트 경로에서 분리).
         from engine.bundle import (
+            ACCOUNTS_EXPLOIT_BUILDERS,
+            ACCOUNTS_TEMPLATE_DIR,
             PORTAL_EXPLOIT_BUILDERS,
             PORTAL_TEMPLATE_DIR,
             TICKETS_EXPLOIT_BUILDERS,
@@ -193,6 +207,14 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
             kwargs["exploit_builders"] = PORTAL_EXPLOIT_BUILDERS
             kwargs["seed_data_builder"] = getattr(
                 portal_params, spec.seed_builder_attr or "build_seed_data"
+            )
+        elif spec.template == "accounts":
+            from engine import accounts_params
+
+            kwargs["template_dir"] = ACCOUNTS_TEMPLATE_DIR
+            kwargs["exploit_builders"] = ACCOUNTS_EXPLOIT_BUILDERS
+            kwargs["seed_data_builder"] = getattr(
+                accounts_params, spec.seed_builder_attr or "build_seed_data"
             )
         elif spec.seed_builder_attr:
             from engine import params

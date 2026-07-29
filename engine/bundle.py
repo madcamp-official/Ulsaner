@@ -11,6 +11,7 @@ from .slots.base import Slot
 TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "notes_app"
 TICKETS_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "tickets_app"
 PORTAL_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "portal_app"
+ACCOUNTS_TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "templates" / "accounts_app"
 SCHEMA_PATH = pathlib.Path(__file__).parent.parent / "contract" / "manifest_schema.json"
 
 _EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
@@ -27,6 +28,10 @@ TICKETS_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceE
 
 PORTAL_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
     "jwt": exploit_gen.build_jwt_forge_exploit,
+}
+
+ACCOUNTS_EXPLOIT_BUILDERS: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] = {
+    "takeover": exploit_gen.build_account_takeover_exploit,
 }
 
 
