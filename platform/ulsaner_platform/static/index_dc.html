@@ -100,6 +100,10 @@ input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparen
 <body>
 <div id="app" style="min-height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);"></div>
 
+<!-- 화면 맨 아래 잔디 장식. 순수 배경이라 pointer-events:none(클릭 방해 안 함)이고,
+     오리·고래 무대(z-index:9999)보다 낮은 z-index라 항상 그 뒤에 깔린다. -->
+<div aria-hidden="true" style="position:fixed;left:0;right:0;bottom:0;height:110px;z-index:1;pointer-events:none;background-image:url(/assets/grass.png);background-repeat:repeat-x;background-position:bottom left;background-size:auto 100%;image-rendering:pixelated;"></div>
+
 <!-- height:100vh(뷰포트 전체)로 둔다: 나쁜 오리가 스페이스바로 100px보다 훨씬
      높이 올라갈 수 있는데, 무대가 100px짜리 좁은 스트립이면 overflow:hidden에
      의해 그 위로 올라간 오리가 잘려서 안 보이는 문제가 있었다. 평소엔 오리들이
