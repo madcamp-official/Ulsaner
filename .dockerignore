@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.git/
+.github/
+.superpowers/
+docs/
+tests/
+platform/tests/
+platform/data/vibecutter_result.json
+.ulsaner-live-bundles/
+*/ulsaner-bundle-*/
+*.zip
+node_modules/
