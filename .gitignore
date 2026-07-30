@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Env / secrets
+.env
+*.local
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.superpowers/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 엔진 VibeCutter 벤치마크 실행 산출물(퍼-런) — 예시 파일만 커밋
+platform/data/vibecutter_result.json
+
+# 생성된 챌린지 번들(app/ + exploits/reference.json 에 평문 flag 포함) — 절대 커밋 금지
+.ulsaner-live-bundles/
+*/ulsaner-bundle-*/
+
+# 디자인 핸드오프 등 바이너리 아카이브 — 레포에 커밋하지 않음(예: "Ulsaner 플랫폼 UI-handoff (1).zip")
+*.zip

@@ -77,8 +77,8 @@ pytest.ini
 ## Platform (Part B) scope — interface only, not detailed here
 
 Part B owns `platform/` and `orchestrator/` and is planned separately by its owner. The only things Part B needs from this plan:
-- **Bundle shape it will deploy**: a directory containing `app/` (with `Dockerfile`, runnable on port 8000) and `manifest.json` at the bundle root, matching `contract/manifest_schema.json`.
-- **What it must NOT read**: the `_internal` block of `manifest.json` (flag, reference exploit path, solution summary) is for the engine's own self-verification and the benchmark harness — the platform must strip or ignore it before anything reaches a student-facing surface.
+- **Bundle shape it will deploy**: a directory containing `app/` (with `Dockerfile`, runnable on port 8000), `manifest.json`, and **`exploits/reference.json`** at the bundle root, matching `contract/manifest_schema.json`.
+- **What it must NOT read or expose**: the `_internal` block of `manifest.json` (flag, reference exploit path, solution summary) is for the engine's own self-verification and the benchmark harness — the platform must strip or ignore it before anything reaches a student-facing surface. **`exploits/reference.json` contains the plaintext flag and the attacker's credential token** (it's what the engine's self-verification and benchmark harness replay against a live instance) — deploy only the `app/` subdirectory; never serve the bundle root or the `exploits/` directory statically, or the flag leaks at a predictable path.
 - **Verification protocol**: student submits a string; platform compares it to `manifest.json`'s top-level `flag` field (design spec section 10).
 
 ---

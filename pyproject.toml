@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ulsaner"
+version = "0.1.0"
+description = "Ulsaner — 매번 새로 생성되는 웹 취약점 훈련 엔진 (Part B: 플랫폼/오케스트레이터)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "jsonschema>=4.21",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "ruff>=0.4",
+]
+
+# platform/ 자체는 패키지가 아니다(파이썬 stdlib `platform` 섀도잉 방지).
+# 실제 임포트 패키지는 platform/ulsaner_platform/ 로 한 단계 중첩한다.
+[tool.setuptools]
+packages = ["ulsaner_platform"]
+package-dir = { "" = "platform" }
+
+[tool.pytest.ini_options]
+pythonpath = ["platform"]
+testpaths = ["platform/tests"]
+filterwarnings = [
+    # starlette TestClient 이 httpx2 전환을 권하는 서드파티 안내 — 우리 코드 무관.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

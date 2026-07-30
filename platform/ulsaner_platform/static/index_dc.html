@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ulsaner — 취약점 주입 훈련 엔진</title>
+<!-- Modernist 디자인 시스템 토큰·컴포넌트 (claude.ai/design 핸드오프, styles.css 인라인) -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap');
+:root {
+  --color-bg: #f3f2f2; --color-surface: #eae9e9; --color-text: #201e1d;
+  --color-accent: #ec3013; --color-accent-2: #e15b47;
+  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+  --color-neutral-100: #f8f4f4; --color-neutral-800: #444141;
+  --color-accent-100: #fff2ef; --color-accent-700: #ae1800; --color-accent-800: #7c1405;
+  --font-heading: "Archivo", system-ui, sans-serif; --font-heading-weight: 800;
+  --font-body: "Archivo", system-ui, sans-serif;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px;
+  --radius-md: 0px; --radius-lg: 0px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+body, h1, h2, h3, p, span, div, dt, dd, button, label { word-break: keep-all; overflow-wrap: break-word; }
+h1, h2, h3 { font-family: var(--font-heading); font-weight: var(--font-heading-weight); letter-spacing: -0.015em; margin: 0; }
+a { color: var(--color-accent-700); text-decoration: none; }
+a:hover { color: var(--color-accent); }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparent); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; text-decoration: none; font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 14px; line-height: 1.2; color: var(--color-text); background: transparent; border: 1px solid transparent; padding: var(--space-2) calc(var(--space-3) * 1.2); border-radius: var(--radius-md); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--color-accent); color: var(--color-bg); }
+.btn-primary:not(:disabled):hover { background: var(--color-accent-600, #dd2b0f); }
+.btn-secondary { border-color: var(--color-divider); }
+.btn-secondary:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); }
+.btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.btn-block { width: 100%; margin-top: 0; justify-content: flex-start; text-align: left; }
+.input { width: 100%; min-height: 36px; padding: 6px 10px; font: inherit; font-size: 14px; color: var(--color-text); caret-color: var(--color-accent); background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: var(--radius-md); }
+.input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+.tag { display: inline-flex; align-items: center; font-size: 11px; letter-spacing: 0.02em; padding: 3px 10px; }
+/* v2 helmet 오버라이드 */
+:root { --color-accent: #b0483a; --color-accent-2: #b0483a; }
+@keyframes ul-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.15; } }
+@keyframes ul-rise { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+/* 하단 오리 마스코트: 나쁜 오리(duck2)는 자동으로 좌우를 걸어다니고,
+   이동 방향에 맞춰 좌우반전된다(원본은 왼쪽을 본다). 일반 오리(duck1)는
+   자동 애니메이션 대신 마우스 x좌표를 따라가도록 JS로 제어한다(아래 script).
+   가로 이동/반전은 -wrap 요소가, 세로 점프는 안쪽 img가 각자 맡아서
+   두 transform이 서로 덮어쓰지 않게 분리했다. */
+@keyframes duck-walk-2 {
+  0%    { transform: translateX(0)      scaleX(1); }
+  49.9% { transform: translateX(-140px) scaleX(1); }
+  50%   { transform: translateX(-140px) scaleX(-1); }
+  99.9% { transform: translateX(0)      scaleX(-1); }
+  100%  { transform: translateX(0)      scaleX(1); }
+}
+/* 클릭하면 한 번 점프. 로딩(스핀업) 중에는 -loop 로 계속 점프하다가,
+   새 화면(실행 중)으로 넘어가면 클래스가 빠지며 바닥에 착지한다. */
+@keyframes duck-jump-once {
+  0%   { transform: translateY(0); }
+  30%  { transform: translateY(-44px); }
+  55%  { transform: translateY(-44px); }
+  100% { transform: translateY(0); }
+}
+@keyframes duck-jump-loop {
+  0%, 100% { transform: translateY(0); }
+  45%      { transform: translateY(-32px); }
+}
+.duck-jump-once { animation: duck-jump-once 0.5s cubic-bezier(.34,1.56,.64,1) 1; }
+.duck-jump-loop { animation: duck-jump-loop 0.55s ease-in-out infinite; }
+.duck-bad-walk { animation: duck-walk-2 8.5s ease-in-out infinite; }
+/* 스페이스바(또는 클릭)를 누를 때마다 나쁜 오리가 50px씩 위로 올라가고, 안
+   누르고 있으면 중력처럼 서서히 바닥으로 하강한다 — 한 번에 화면 맨 위까지
+   가는 게 아니라 여러 번 눌러야 도달한다. 값이 매 프레임 바뀌는 연속적인
+   물리 시뮬레이션이라 CSS 애니메이션이 아니라 JS가 매 프레임 style.transform을
+   직접 계산해서 설정한다(아래 script의 jumpBadDuckStep/badGravityStep). */
+/* #duck-stage 자체는 평소에도 height:100vh(뷰포트 전체)다 — 오리들은 bottom:0로
+   무대 맨 아래에 붙어 있어 시각적으로는 화면 하단에 서 있는 것처럼 보이지만,
+   나쁜 오리가 스페이스바로 100px보다 훨씬 높이 올라갈 수 있으므로 무대 자체가
+   좁으면 overflow:hidden에 잘려 안 보이는 문제가 있었다. 로딩(스핀업) 중엔 같은
+   무대에서 오리들이 화면 전체를 정신없이 날아다니고, .duck-stage-full은 그 상태를
+   나타내는 순수 마커 클래스다(높이는 이미 100vh라 따로 바꿀 게 없다). */
+/* 일반 오리를 빠르게 움직이면 진행 방향 뒤로 흩날리는 먼지 입자.
+   컨테이너가 pointer-events:none·overflow:hidden 이라 클릭 방해 없이 하단 스트립에 갇힌다. */
+@keyframes duck-dust {
+  0%   { opacity: 0.5;  transform: translate(0, 0) scale(0.5); }
+  60%  { opacity: 0.32; }
+  100% { opacity: 0;    transform: translate(var(--dx, -16px), -12px) scale(1.7); }
+}
+.duck-dust {
+  position: absolute; border-radius: 50%;
+  background: color-mix(in srgb, #7c6f5e 55%, transparent);
+  pointer-events: none; will-change: transform, opacity;
+  animation: duck-dust 520ms ease-out forwards;
+}
+</style>
+</head>
+<body>
+<div id="app" style="min-height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);"></div>
+
+<!-- height:100vh(뷰포트 전체)로 둔다: 나쁜 오리가 스페이스바로 100px보다 훨씬
+     높이 올라갈 수 있는데, 무대가 100px짜리 좁은 스트립이면 overflow:hidden에
+     의해 그 위로 올라간 오리가 잘려서 안 보이는 문제가 있었다. 평소엔 오리들이
+     bottom:0으로 무대 맨 아래에 붙어 있어 시각적으로는 예전과 동일하게 화면
+     하단에 서 있는 것처럼 보인다. -->
+<div id="duck-stage" aria-hidden="true" style="position:fixed;left:0;right:0;bottom:0;height:100vh;pointer-events:none;overflow:hidden;z-index:9999;">
+  <div id="duck-normal-wrap" style="position:absolute;left:22%;bottom:0;transform-origin:center bottom;transition:left 0.32s ease-out, top 0.32s ease-out, transform 0.2s ease-out;">
+    <img id="duck-normal" src="/assets/duck1.png" alt="" style="display:block;height:78px;width:auto;image-rendering:pixelated;transform-origin:center bottom;pointer-events:auto;cursor:pointer;" />
+  </div>
+  <div id="duck-bad-wrap" class="duck-bad-walk" style="position:absolute;left:58%;bottom:0;transform-origin:center bottom;transition:left 0.32s ease-out, top 0.32s ease-out, transform 0.2s ease-out;">
+    <img id="duck-bad" src="/assets/duck2.png" alt="" style="display:block;height:88px;width:auto;image-rendering:pixelated;transform-origin:center bottom;pointer-events:auto;cursor:pointer;" />
+  </div>
+</div>
+
+<script>
+"use strict";
+// 일반 오리(duck-normal)는 자동 애니메이션 없이 마우스 x좌표를 따라간다.
+// 나쁜 오리(duck2)는 CSS duck-walk-2 애니메이션으로 계속 자동으로 걷는다.
+(function () {
+  const wrap = document.getElementById("duck-normal-wrap");
+  const layer = document.getElementById("duck-stage"); // 하단 고정 스트립(pointer-events:none, overflow:hidden)
+  if (!wrap || !layer) return;
+  let lastX = null, lastT = 0, lastPuff = 0;
+
+  function spawnDust(cx, dir) {
+    // dir: +1 오른쪽으로 이동. 먼지는 진행 방향 반대(=뒤)로 깔린다.
+    const n = 2 + Math.floor(Math.random() * 2); // 2~3개
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement("div");
+      d.className = "duck-dust";
+      const jitter = Math.random() * 10 - 5;
+      const size = 6 + Math.random() * 7;
+      d.style.left = (cx - dir * (16 + Math.random() * 12) + jitter) + "px";
+      d.style.bottom = (2 + Math.random() * 8) + "px";
+      d.style.width = d.style.height = size + "px";
+      d.style.setProperty("--dx", (-dir * (14 + Math.random() * 18)) + "px");
+      d.style.animationDuration = (420 + Math.random() * 260) + "ms";
+      d.addEventListener("animationend", () => d.remove());
+      layer.appendChild(d);
+    }
+  }
+
+  document.addEventListener("mousemove", (e) => {
+    if (window.__duckFlying) return; // 로딩 중엔 화면 전체를 날아다니므로 마우스 추적을 잠시 끈다
+    const now = e.timeStamp || performance.now();
+    const w = wrap.offsetWidth || 60;
+    const maxLeft = Math.max(0, window.innerWidth - w);
+    const left = Math.max(0, Math.min(maxLeft, e.clientX - w / 2));
+    if (lastX !== null && Math.abs(e.clientX - lastX) > 1) {
+      const dir = e.clientX > lastX ? 1 : -1;
+      wrap.style.transform = dir > 0 ? "scaleX(-1)" : "scaleX(1)";
+      // 속도(px/ms). 빠르게 움직일 때만, 그리고 과하지 않게 스로틀링해서 먼지를 뿜는다.
+      const speed = Math.abs(e.clientX - lastX) / Math.max(1, now - lastT);
+      if (speed > 1.4 && now - lastPuff > 45) {
+        lastPuff = now;
+        spawnDust(left + w / 2, dir);
+      }
+    }
+    lastX = e.clientX; lastT = now;
+    wrap.style.left = left + "px";
+  });
+})();
+
+// 오리 클릭 → 한 번 점프(로딩 중 이미 계속 점프하고 있으면 무시).
+// 가로 이동/반전은 각 -wrap 요소가 맡고, 점프(translateY)는 안쪽 img만 담당해서
+// 두 애니메이션이 같은 transform 속성을 두고 충돌하지 않는다.
+(function () {
+  const normalImg = document.getElementById("duck-normal");
+  const badImg = document.getElementById("duck-bad");
+  const allDucks = [normalImg, badImg].filter(Boolean);
+  const stage = document.getElementById("duck-stage");
+  const normalWrap = document.getElementById("duck-normal-wrap");
+  const badWrap = document.getElementById("duck-bad-wrap");
+
+  // 일반 오리는 기존대로 클릭하면 한 번 점프(로딩 중이면 무시).
+  if (normalImg) {
+    normalImg.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (normalImg.classList.contains("duck-jump-loop")) return;
+      normalImg.classList.remove("duck-jump-once");
+      void normalImg.offsetWidth; // 강제 리플로우로 같은 클래스 재적용 시에도 애니메이션 재시작
+      normalImg.classList.add("duck-jump-once");
+    });
+    normalImg.addEventListener("animationend", (e) => {
+      if (e.animationName === "duck-jump-once") normalImg.classList.remove("duck-jump-once");
+    });
+  }
+
+  // 나쁜 오리는 스페이스바(또는 클릭)를 누를 때마다 50px씩 위로 올라가고,
+  // 안 누르면 중력처럼 서서히 바닥으로 하강한다 — jumpBadDuckStep이 badY를
+  // 50px 증가시키고, badGravityStep(rAF 루프)이 매 프레임 badY를 줄여가며
+  // style.transform을 직접 갱신한다(같은 img의 transform이라 CSS 애니메이션과
+  // 겹치면 서로 덮어써서 값이 튀므로, 나쁜 오리는 이 JS 루프 하나만 transform을 건드린다).
+  const CLIMB_STEP = 50;
+  const FALL_SPEED = 220; // px/sec 하강 속도
+  let badY = 0, badRafId = null, badLastTs = null;
+
+  function badMaxClimb() {
+    // badImg.getBoundingClientRect()는 현재 translateY(-badY)가 반영된 값이므로
+    // + badY 를 더하면 badY=0(바닥)일 때의 top을 역산할 수 있다.
+    const rect = badImg.getBoundingClientRect();
+    const restTop = rect.top + badY;
+    return Math.max(0, restTop - 8); // 화면 맨 위에서 8px 여유
+  }
+  function applyBadY() {
+    badImg.style.transform = badY > 0 ? `translateY(-${badY}px)` : "";
+  }
+  function badGravityStep(ts) {
+    if (badLastTs == null) badLastTs = ts;
+    const dt = (ts - badLastTs) / 1000;
+    badLastTs = ts;
+    badY = Math.max(0, badY - FALL_SPEED * dt);
+    applyBadY();
+    if (badY > 0) {
+      badRafId = requestAnimationFrame(badGravityStep);
+    } else {
+      badRafId = null; badLastTs = null;
+    }
+  }
+  function ensureGravityRunning() {
+    if (badRafId == null) { badLastTs = null; badRafId = requestAnimationFrame(badGravityStep); }
+  }
+  function resetBadClimb() {
+    badY = 0;
+    if (badRafId != null) { cancelAnimationFrame(badRafId); badRafId = null; }
+    badLastTs = null;
+    if (badImg) badImg.style.transform = "";
+  }
+  function jumpBadDuckStep() {
+    if (!badImg) return;
+    if (badImg.classList.contains("duck-jump-loop")) return; // 로딩 중엔 무시(그동안은 화면 전체를 날아다님)
+    badY = Math.min(badMaxClimb(), badY + CLIMB_STEP);
+    applyBadY();
+    ensureGravityRunning();
+  }
+  if (badImg) {
+    badImg.addEventListener("click", (e) => { e.stopPropagation(); jumpBadDuckStep(); });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.code !== "Space" && e.key !== " ") return;
+    const tag = (document.activeElement && document.activeElement.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA") return; // 텍스트 입력 중엔 페이지 스크롤/타이핑 우선
+    e.preventDefault();
+    jumpBadDuckStep();
+  });
+
+  // 로딩(스핀업) 중엔 화면 전체를 무대로 써서 오리들이 정신없이 이곳저곳으로
+  // 날아다닌다. 마우스 추적/나쁜 오리의 자동 걷기는 그동안 잠시 멈춘다.
+  let flyTimer = null;
+  function randomSpotFor(wrap) {
+    const w = wrap.offsetWidth || 60, h = wrap.offsetHeight || 60;
+    const maxLeft = Math.max(0, window.innerWidth - w);
+    const maxTop = Math.max(0, window.innerHeight - h - 8);
+    return { left: Math.random() * maxLeft, top: Math.random() * maxTop };
+  }
+  function flyTick() {
+    [normalWrap, badWrap].forEach((wrap) => {
+      if (!wrap) return;
+      const prevLeft = parseFloat(wrap.style.left) || 0;
+      const spot = randomSpotFor(wrap);
+      wrap.style.top = spot.top + "px";
+      wrap.style.left = spot.left + "px";
+      wrap.style.transform = spot.left > prevLeft ? "scaleX(-1)" : "scaleX(1)";
+    });
+  }
+  function startFlying() {
+    if (window.__duckFlying) return;
+    window.__duckFlying = true;
+    // 무대는 평소에도 이미 100vh(클리핑 방지)라 height는 그대로 두고, 마커 클래스만 토글한다.
+    if (stage) { stage.classList.add("duck-stage-full"); }
+    if (badWrap) { badWrap.classList.remove("duck-bad-walk"); badWrap.style.transform = ""; }
+    resetBadClimb(); // 로딩 중엔 화면 전체를 날아다니므로 남은 상승분을 없애고 넘긴다
+    [normalWrap, badWrap].forEach((wrap) => { if (wrap) wrap.style.bottom = "auto"; });
+    flyTick();
+    flyTimer = setInterval(flyTick, 420);
+  }
+  function stopFlying() {
+    if (!window.__duckFlying) return;
+    window.__duckFlying = false;
+    clearInterval(flyTimer); flyTimer = null;
+    if (stage) { stage.classList.remove("duck-stage-full"); }
+    if (normalWrap) { normalWrap.style.top = ""; normalWrap.style.bottom = "0"; normalWrap.style.left = "22%"; normalWrap.style.transform = ""; }
+    if (badWrap) { badWrap.style.top = ""; badWrap.style.bottom = "0"; badWrap.style.left = "58%"; badWrap.style.transform = ""; badWrap.classList.add("duck-bad-walk"); }
+    resetBadClimb(); // 착지 시 스페이스바로 쌓아둔 상승분도 함께 초기화
+  }
+
+  // 스핀업(로딩) 중엔 계속 점프 + 화면 전체를 날아다니고, 새 화면(실행 중 등)으로
+  // 넘어가면 착지한다. render()가 phase 전환 때마다 호출되므로 여기서 매번 동기화한다.
+  window.__syncDuckLoading = function (loading) {
+    allDucks.forEach((img) => {
+      if (loading) { img.classList.remove("duck-jump-once"); img.classList.add("duck-jump-loop"); }
+      else img.classList.remove("duck-jump-loop");
+    });
+    if (loading) startFlying(); else stopFlying();
+  };
+})();
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pad2 = (n) => String(n).padStart(2, "0");
+const fmt = (s) => Math.floor(s / 60) + ":" + pad2(s % 60);
+
+// 계획했던 슬롯(idor easy/hard·sqli easy/hard·tickets)이 모두 라이브가 되어 '준비 중'
+// placeholder 는 비운다. /challenges 가 주는 실카드만 노출한다(locked 렌더 로직은 향후
+// '준비 중' 슬롯이 생기면 여기 항목만 추가하면 되도록 유지).
+const UPCOMING = [];
+
+const state = {
+  solved: 0, attempts: 0, byChallenge: {}, phase: "catalog",   // catalog | spinup | running | solved
+  challenges: [], instance: null, flagInput: "", result: null, reveal: null, copyLabel: "URL 복사", spinLog: [], ttl: 0,
+};
+let ttlTimer = null;
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  let data = null; try { data = await res.json(); } catch (e) {}
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function loadCatalog() {
+  const { data } = await api("/challenges");
+  const real = ((data && data.available) || []).map((c) => ({
+    id: c.name, type: (c.vuln_type || "").toUpperCase(), tier: c.tier, summary: c.task_prompt, locked: false,
+  }));
+  state.challenges = [...real, ...UPCOMING];
+  render();
+}
+async function loadStats() {
+  const { data } = await api("/stats");
+  if (data) { state.solved = data.solved; state.attempts = data.attempts; state.byChallenge = data.by_challenge || {}; render(); }
+}
+
+async function start(id) {
+  const ch = state.challenges.find((c) => c.id === id);
+  if (!ch || ch.locked) return;
+  clearInterval(ttlTimer);
+  state.phase = "spinup"; state.instance = { challenge: ch }; state.spinLog = [];
+  state.flagInput = ""; state.result = null; state.reveal = null; state.copyLabel = "URL 복사"; render();
+
+  const steps = ["orchestrator spinup " + ch.id, "번들 빌드 (docker build) — ok", "컨테이너 실행 (non-root) — ok", "동적 포트 할당", "헬스체크 — healthy"];
+  const t0 = Date.now();
+  steps.forEach((line, i) => setTimeout(() => {
+    if (state.phase !== "spinup") return;
+    state.spinLog.push(pad2(i + 1) + "  " + line); render();
+  }, 280 + i * 300));
+
+  const { ok, data } = await api("/challenges", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: ch.id }),
+  });
+  const finish = () => {
+    if (!ok || !data) { state.phase = "catalog"; state.instance = null; alert("인스턴스 배포에 실패했습니다. Docker 데몬을 확인하세요."); render(); return; }
+    const port = (data.url.match(/:(\d+)/) || [])[1] || "";
+    state.instance = { challenge: ch, id: data.challenge_id, url: data.url, port, task: (data.entry && data.entry.task_prompt) || ch.summary };
+    state.phase = "running"; state.ttl = 30 * 60; render();
+    clearInterval(ttlTimer);
+    ttlTimer = setInterval(() => {
+      if (state.ttl <= 1) { clearInterval(ttlTimer); exit(true); return; }
+      state.ttl -= 1;
+      const t = $("ttl"); if (t) { t.textContent = fmt(state.ttl); if (state.ttl < 60) t.style.color = "var(--color-accent)"; }
+    }, 1000);
+  };
+  setTimeout(finish, Math.max(0, 280 + steps.length * 300 + 220 - (Date.now() - t0)));
+}
+
+async function submit() {
+  const inst = state.instance;
+  if (state.phase !== "running" || !inst || !state.flagInput.trim()) return;
+  const { ok, status, data } = await api(`/challenges/${inst.id}/submit`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ flag: state.flagInput.trim() }),
+  });
+  if (status === 404) { state.result = "expired"; render(); await loadStats(); return; }
+  if (ok && data && data.correct) { clearInterval(ttlTimer); state.result = "correct"; state.phase = "solved"; state.reveal = data.reveal || null; }
+  else { state.result = "wrong"; }
+  render(); await loadStats();
+}
+
+async function exit(silent) {
+  const inst = state.instance; clearInterval(ttlTimer);
+  if (inst && inst.id) api(`/challenges/${inst.id}`, { method: "DELETE" }).catch(() => {});
+  state.phase = "catalog"; state.instance = null; state.flagInput = ""; state.result = null; state.reveal = null;
+  render(); if (!silent) loadStats();
+}
+
+function copy() {
+  const url = state.instance && state.instance.url;
+  if (url && navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+  state.copyLabel = "복사됨"; render();
+  setTimeout(() => { state.copyLabel = "URL 복사"; render(); }, 1400);
+}
+
+// ── 렌더 ──────────────────────────────────────────────────────────────
+const MUTED62 = "color-mix(in srgb, var(--color-text) 62%, transparent)";
+
+function head() {
+  const navCtx = state.phase === "catalog" ? "GET /challenges" : "Session";
+  return `
+  <div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-4) var(--space-8);border-bottom:2px solid var(--color-text);">
+    <span style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:20px;letter-spacing:-0.02em;">ULSANER</span>
+    <span style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">Vulnerability Injection Training Engine</span>
+    <a href="/dashboard" style="margin-left:auto;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">대시보드</a>
+    <span style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent-700);">${navCtx}</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 200px 200px;border-bottom:2px solid var(--color-text);">
+    <div style="padding:var(--space-6) var(--space-8);border-right:2px solid var(--color-text);display:flex;flex-direction:column;justify-content:flex-end;gap:var(--space-2);">
+      <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--color-accent);">교육용 보안 훈련</div>
+      <h1 style="margin:0;font-size:32px;line-height:1.15;letter-spacing:-0.025em;">격리된 환경에서 실제 취약점을 공격합니다</h1>
+    </div>
+    <div style="padding:var(--space-6) var(--space-6);border-right:2px solid var(--color-text);display:flex;flex-direction:column;justify-content:flex-end;">
+      <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${MUTED62};">풀이</div>
+      <div style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:64px;line-height:1;letter-spacing:-0.04em;color:var(--color-accent);font-variant-numeric:tabular-nums;">${pad2(state.solved)}</div>
+    </div>
+    <div style="padding:var(--space-6) var(--space-6);display:flex;flex-direction:column;justify-content:flex-end;">
+      <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${MUTED62};">시도</div>
+      <div style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:64px;line-height:1;letter-spacing:-0.04em;font-variant-numeric:tabular-nums;">${pad2(state.attempts)}</div>
+    </div>
+  </div>`;
+}
+
+function catalogView() {
+  const avail = state.challenges.filter((c) => !c.locked).length;
+  const rowBase = "display:grid;grid-template-columns:64px 1.1fr 110px 90px 1.6fr 150px;align-items:center;gap:var(--space-4);padding:var(--space-4) var(--space-8);border-bottom:1px solid var(--color-divider);";
+  const rows = state.challenges.map((c, i) => {
+    const typeStyle = c.locked
+      ? "border:1px solid transparent;color:color-mix(in srgb,var(--color-text) 55%,transparent);background:transparent;"
+      : "border:1px solid var(--color-text);background:transparent;color:var(--color-text);font-weight:600;";
+    const tierStyle = c.locked
+      ? "border:1px solid transparent;color:color-mix(in srgb,var(--color-text) 55%,transparent);background:transparent;"
+      : "border:1px solid var(--color-accent);background:var(--color-accent-100);color:var(--color-accent-800);font-weight:600;";
+    const status = c.locked
+      ? '<span style="font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent);">준비 중</span>'
+      : `<button class="btn btn-primary btn-block" data-act="start" data-id="${esc(c.id)}" style="justify-content:flex-start;">시작하기 →</button>`;
+    const solves = ((state.byChallenge[c.id] || {}).solved) || 0;
+    const solveBadge = c.locked ? ""
+      : solves > 0
+        ? `<span style="font-family:var(--font-body);font-weight:600;font-size:11px;letter-spacing:0.03em;color:var(--color-accent-700);">✓ ${solves}회 성공</span>`
+        : `<span style="font-family:var(--font-body);font-size:11px;letter-spacing:0.03em;color:color-mix(in srgb,var(--color-text) 40%,transparent);">미해결</span>`;
+    return `<div style="${rowBase}${c.locked ? "opacity:0.5;" : ""}">
+      <span style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:13px;font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--color-text) 45%,transparent);">${pad2(i + 1)}</span>
+      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+        <span style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:19px;letter-spacing:-0.02em;">${esc(c.id)}</span>
+        ${solveBadge}
+      </span>
+      <span><span class="tag" style="${typeStyle}">${esc(c.type)}</span></span>
+      <span><span class="tag" style="${tierStyle}">${esc(c.tier)}</span></span>
+      <span style="font-size:13.5px;line-height:1.5;color:color-mix(in srgb,var(--color-text) 72%,transparent);">${esc(c.summary)}</span>
+      <span>${status}</span>
+    </div>`;
+  }).join("");
+  const info = (k, v) => `<div style="display:grid;grid-template-columns:160px 1fr;gap:var(--space-8);padding:var(--space-4) var(--space-8);border-bottom:1px solid var(--color-divider);">
+      <span style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">${k}</span>
+      <p style="margin:0;font-size:13px;line-height:1.6;color:color-mix(in srgb,var(--color-text) 68%,transparent);">${v}</p></div>`;
+  return `<div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:var(--space-6) var(--space-8) var(--space-3);">
+      <h2 style="margin:0;font-size:15px;letter-spacing:0.16em;text-transform:uppercase;">챌린지 목록</h2>
+      <span style="font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:${MUTED62};">사용 가능 ${avail} / 전체 ${state.challenges.length}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:64px 1.1fr 110px 90px 1.6fr 150px;align-items:center;gap:var(--space-4);padding:var(--space-2) var(--space-8);border-top:2px solid var(--color-text);border-bottom:1px solid var(--color-divider);font-size:10.5px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">
+      <span>No.</span><span>슬롯 ID</span><span>유형</span><span>난이도</span><span>설명</span><span>상태</span>
+    </div>
+    ${rows}
+    <div style="border-top:2px solid var(--color-text);">
+      ${info("인스턴스", "각 인스턴스는 요청 시점에 새로 빌드되어 Docker로 격리 실행되고, 동적 포트를 할당받는다.")}
+      ${info("취약점", "주입된 취약점의 위치는 공개되지 않는다. 소스가 아니라 동작을 관찰해 찾아야 한다.")}
+      ${info("채점", '채점은 flag 제출로만 이뤄진다. 형식은 <span style="color:var(--color-accent-700);">FLAG{…}</span>.')}
+    </div>
+  </div>`;
+}
+
+function sessionView() {
+  const inst = state.instance, ch = inst && inst.challenge, phase = state.phase;
+  const statusMap = {
+    spinup: { label: "스핀업 중", color: "var(--color-accent)", anim: "animation:ul-blink 1s step-end infinite;" },
+    running: { label: "실행 중", color: "var(--color-accent)", anim: "" },
+    solved: { label: "종료됨", color: "color-mix(in srgb, var(--color-text) 55%, transparent)", anim: "" },
+  };
+  const st = statusMap[phase] || statusMap.running;
+  const ttlLow = state.ttl > 0 && state.ttl < 60;
+
+  const bar = `<div style="display:flex;align-items:center;gap:var(--space-6);padding:var(--space-4) var(--space-8);border-bottom:2px solid var(--color-text);">
+    <button class="btn btn-ghost" data-act="exit" style="padding-left:0;">← 목록</button>
+    <span style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:24px;letter-spacing:-0.02em;">${esc(ch ? ch.id : "")}</span>
+    <span style="display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:${st.color};"><span style="width:8px;height:8px;background:${st.color};${st.anim}"></span>${st.label}</span>
+    <span style="margin-left:auto;display:flex;align-items:baseline;gap:var(--space-3);">
+      <span style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">남은 시간</span>
+      <span id="ttl" style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:30px;line-height:1;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;color:${ttlLow ? "var(--color-accent)" : "var(--color-text)"};">${fmt(state.ttl)}</span>
+    </span>
+  </div>`;
+
+  let body;
+  if (phase === "spinup") {
+    const lines = state.spinLog.map((l) => `<div style="padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider);font-size:14px;letter-spacing:-0.005em;">${esc(l)}</div>`).join("");
+    body = `<div style="padding:var(--space-8);display:grid;grid-template-columns:260px 1fr;gap:var(--space-8);">
+      <div>
+        <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--color-accent);margin-bottom:var(--space-2);">POST /challenges</div>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:color-mix(in srgb,var(--color-text) 68%,transparent);">격리 인스턴스를 배포하는 중입니다. 완료되면 접속 URL과 과제가 표시됩니다.</p>
+      </div>
+      <div style="border-top:2px solid var(--color-text);">${lines}<div style="padding:var(--space-3) 0;font-size:14px;color:var(--color-accent);">▌<span style="animation:ul-blink 1s step-end infinite;">처리 중</span></div></div>
+    </div>`;
+  } else {
+    const isSolved = phase === "solved";
+    const submitDisabled = isSolved || !state.flagInput.trim();
+    const wrong = state.result === "wrong" || state.result === "expired";
+    const wrongBox = wrong ? `<div style="margin-top:var(--space-4);max-width:620px;border-left:4px solid var(--color-accent);padding:var(--space-3) var(--space-4);background:var(--color-accent-100);">
+        <div style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:15px;color:var(--color-accent-800);">${state.result === "expired" ? "만료" : "오답"}</div>
+        <div style="font-size:13px;color:var(--color-accent-800);opacity:0.85;">${state.result === "expired" ? "인스턴스가 종료되었습니다. 목록에서 다시 시작하세요." : "flag가 일치하지 않습니다. 시도 " + pad2(state.attempts) + "회."}</div>
+      </div>` : "";
+    const rv = state.reveal;
+    const revealRows = rv ? [["왜 뚫렸나", rv.solution_summary], ["flag 위치", rv.flag_planted_in], ["레퍼런스 공격", rv.reference_exploit]]
+      .filter(([, v]) => v)
+      .map(([k, v]) => `<div style="display:grid;grid-template-columns:140px 1fr;gap:var(--space-6);padding:var(--space-4) 0;border-bottom:1px solid var(--color-divider);">
+          <span style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">${esc(k)}</span>
+          <span style="font-size:14.5px;line-height:1.6;">${esc(v)}</span></div>`).join("") : "";
+    const revealBox = (isSolved && rv) ? `<div style="border-top:2px solid var(--color-text);padding:var(--space-8);">
+        <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--color-accent);margin-bottom:var(--space-3);">이 인스턴스의 취약점 · 풀이 후 공개</div>
+        <p style="margin:0 0 var(--space-4);font-size:13px;line-height:1.6;color:color-mix(in srgb,var(--color-text) 62%,transparent);max-width:64ch;">매 인스턴스가 랜덤이라 정답을 검색해 찾을 수는 없지만, 어디에 취약점이 심겼는지는 풀이 후 이렇게 공개한다.</p>
+        ${revealRows}
+      </div>` : "";
+    const solvedBox = isSolved ? `<div style="border-top:2px solid var(--color-text);background:var(--color-accent);color:var(--color-bg);padding:var(--space-8);">
+        <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;opacity:0.85;margin-bottom:var(--space-2);">채점 결과</div>
+        <div style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:56px;line-height:1;letter-spacing:-0.03em;">정답</div>
+        <p style="margin:var(--space-4) 0 var(--space-6);font-size:15px;max-width:44ch;opacity:0.92;">flag가 검증되었습니다. 인스턴스는 종료되었고 풀이 수에 반영되었습니다.</p>
+        <button class="btn" data-act="exit" style="background:var(--color-bg);color:var(--color-text);">목록으로 돌아가기</button>
+      </div>${revealBox}` : "";
+    const meta = [["인스턴스", inst ? inst.id.slice(0, 12) : ""], ["포트", inst ? inst.port : ""], ["격리", "Docker · non-root"], ["채점", "flag 제출"]]
+      .map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) var(--space-6);border-bottom:1px solid var(--color-divider);">
+        <dt style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">${k}</dt>
+        <dd style="margin:0;font-size:13.5px;font-variant-numeric:tabular-nums;">${esc(v)}</dd></div>`).join("");
+    body = `<div style="display:grid;grid-template-columns:1fr 380px;">
+      <div style="border-right:2px solid var(--color-text);">
+        <div style="padding:var(--space-8);">
+          <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--color-accent);margin-bottom:var(--space-3);">과제</div>
+          <p style="margin:0 0 var(--space-3);font-size:14px;line-height:1.6;max-width:52ch;color:color-mix(in srgb,var(--color-text) 65%,transparent);">이 인스턴스는 요청 시점에 새로 생성되었습니다. 정답을 검색해 찾을 수 없습니다.</p>
+          <p style="margin:0;font-size:19px;line-height:1.65;letter-spacing:-0.005em;max-width:44ch;border-left:3px solid var(--color-accent);padding-left:var(--space-4);">${esc(inst ? inst.task : "")}</p>
+        </div>
+        <div style="border-top:2px solid var(--color-text);padding:var(--space-8);">
+          <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${MUTED62};margin-bottom:var(--space-3);">flag 제출 — POST /challenges/{id}/submit</div>
+          <div style="display:flex;gap:var(--space-3);max-width:620px;">
+            <input id="flagInput" class="input" value="${esc(state.flagInput)}" ${isSolved ? "disabled" : ""} placeholder="FLAG{...}" spellcheck="false" autocomplete="off" style="flex:1;min-width:0;font-size:16px;padding:var(--space-3) var(--space-4);">
+            <button class="btn btn-primary" data-act="submit" ${submitDisabled ? "disabled" : ""} style="padding-left:var(--space-6);padding-right:var(--space-6);">제출</button>
+          </div>
+          ${wrongBox}
+        </div>
+        ${solvedBox}
+      </div>
+      <aside>
+        <div style="padding:var(--space-6);">
+          <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${MUTED62};margin-bottom:var(--space-3);">접속 URL</div>
+          <div style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:19px;letter-spacing:-0.02em;color:var(--color-accent-700);word-break:break-all;margin-bottom:var(--space-3);">${esc(inst ? inst.url : "")}</div>
+          <div style="display:flex;gap:var(--space-2);">
+            <button class="btn btn-secondary" data-act="copy">${state.copyLabel}</button>
+            <a class="btn btn-ghost" href="${esc(inst ? inst.url : "#")}" target="_blank" rel="noreferrer">새 탭에서 열기 ↗</a>
+          </div>
+        </div>
+        <dl style="margin:0;border-top:2px solid var(--color-text);">${meta}</dl>
+        <div style="padding:var(--space-6);">
+          <button class="btn btn-secondary btn-block" data-act="exit" style="justify-content:flex-start;">인스턴스 종료</button>
+        </div>
+      </aside>
+    </div>`;
+  }
+  return `<div style="animation:ul-rise 0.3s ease both;">${bar}${body}</div>`;
+}
+
+function render() {
+  if (window.__syncDuckLoading) window.__syncDuckLoading(state.phase === "spinup");
+  $("app").innerHTML = head() + (state.phase === "catalog" ? catalogView() : sessionView());
+  const fi = $("flagInput");
+  if (fi) {
+    fi.addEventListener("input", (e) => { state.flagInput = e.target.value; if (state.result === "wrong") state.result = null; render(); const n = $("flagInput"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
+    fi.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+  }
+  document.querySelectorAll("[data-act]").forEach((el) => el.addEventListener("click", () => {
+    const a = el.getAttribute("data-act");
+    if (a === "start") start(el.getAttribute("data-id"));
+    else if (a === "submit") submit();
+    else if (a === "exit") exit();
+    else if (a === "copy") copy();
+  }));
+}
+
+render();
+loadCatalog();
+loadStats();
+</script>
+</body>
+</html>

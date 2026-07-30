@@ -1,0 +1,34 @@
+diff --git a/surface/candidates.py b/surface/candidates.py
+index 5c7cd95..fc6a923 100644
+--- a/surface/candidates.py
++++ b/surface/candidates.py
+@@ -62,6 +62,17 @@ _SELF_SIGNUP_HINTS: dict[str, dict[str, str]] = {
+         "signup_body_json": '{"email":"{email}","password":"{password}","nickname":"{name}"}',
+         "token_key": "token",
+     },
++    # Ulsaner 생성 IDOR 타깃(감사 스캐폴딩: /signup 이 bearer 토큰 발급, /notes POST 로 소유
++    # 리소스 생성 → GET /notes/{id} 교차 조회). marker 가 note body 로 들어가 attack 응답에 노출된다.
++    "easy-idor-seed9896": {
++        "signup_path": "/signup",
++        "signup_body_json": '{"name":"{name}","email":"{email}","password":"{password}"}',
++        "token_key": "accessToken",
++        "owner_setup_path": "/notes",
++        "owner_setup_body_json": '{"title":"vc","body":"{marker}"}',
++        "path_template": "/notes/{id}",
++        "resource_id_key": "id",
++    },
+ }
+ 
+ 
+diff --git a/targets/verifier_provisioning.yaml b/targets/verifier_provisioning.yaml
+index af2b920..19ed1fb 100644
+--- a/targets/verifier_provisioning.yaml
++++ b/targets/verifier_provisioning.yaml
+@@ -31,3 +31,7 @@ targets:
+     fixture_path: .vibecutter/fixtures/w2c101-resume-matcher-idor.json
+     notes: GitHub-OAuth-only app has no self_signup path; P1 fixture creates two local users
+       directly and the verifier reads a static bearer token from an env var it never persists.
++  easy-idor-seed9896:
++    strategy: self_signup
++    auth_mode: bearer
++    notes: Ulsaner 생성 IDOR 타깃. signup이 bearer 토큰을 발급하고 note 생성 후 교차 조회로 재현.
