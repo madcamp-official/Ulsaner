@@ -51,6 +51,10 @@ class _SlotSpec:
     reorder_var_name: str = "note"  # 하드 티어 지역변수 리네임 대상(tickets 는 "ticket")
     health_check_path: str = "/notes/2"  # 자가검증 기동 대기용 헬스 경로
     seed_builder_attr: str | None = None  # engine.params 의 커스텀 seed 빌더명(하드=랜덤 id 등). None 이면 기본
+    # 온디맨드 단계 힌트(개념→관찰→방법). manifest.entry.hints 로 실려 학생이 '힌트 열기' 할 때만
+    # 한 단계씩 노출된다. 이 챌린지의 실제 엔드포인트·메커니즘을 짚어 유형별 일반 힌트보다 구체적이다.
+    # flag/정답 원문은 담지 않는다. 비우면 프론트가 유형별 일반 힌트(HINTS)로 폴백.
+    hints: tuple[str, ...] = ()
 
 
 # (vuln_type, tier, template) -> _SlotSpec.
@@ -62,6 +66,11 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         "build_easy_idor_slot",
         "당신은 bob 계정입니다 (요청 헤더 Authorization: Bearer {attacker_token}). 다른 사용자(alice)의 비공개 노트를 읽어 그 안에 심긴 flag 를 획득하세요.",
         "노트 조회에서 소유권(owner) 검증이 빠져 있어 남의 비공개 노트를 읽을 수 있다(IDOR).",
+        hints=(
+            "정답은 소스가 아니라 동작에 있습니다. 내 노트를 여는 요청이 노트를 무엇으로 가리키는지(어떤 id 값) 먼저 관찰하세요.",
+            "GET /notes 로 목록을 보면 노트마다 id 가 있습니다. 그 중 내 것이 아닌 노트의 id 로 조회를 시도해 보면 어떻게 될까요?",
+            "GET /notes/<id> 에 alice 노트의 id 를 넣어 그대로 요청하세요 — 소유권 검증이 없어 비공개 노트 본문이 그대로 열립니다.",
+        ),
     ),
     ("idor", "hard", "notes"): _SlotSpec(
         "engine.slots.hard_idor",
@@ -70,6 +79,11 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         "주의: 노트 id 는 추측할 수 없는 랜덤 값이라 번호를 눌러보는 것으로는 못 찾습니다. 앱이 노출하는 정보 어딘가에서 다른 노트의 id 가 새어 나옵니다 — 그 유출 지점을 찾아 피해자 노트 id 를 알아낸 뒤 열으세요.",
         "노트 id 가 랜덤이라 열거 불가 + get_note 의 소유권 검증이 workspace 스코프로 변형됨(정적분석 회피). "
         "GET /notes 목록이 워크스페이스 전체 노트 id 를 흘리는 걸 이용해 피해자 노트 id 를 얻어 IDOR — '유출 발견 → 악용' 2단계.",
+        hints=(
+            "노트 id 가 랜덤이라 번호를 눌러보는 건 소용없습니다. 대신 앱이 응답 어딘가에서 '다른 노트의 id' 를 흘리지 않는지 살펴보세요.",
+            "GET /notes 목록 응답을 자세히 보면 내 것이 아닌 노트의 id 까지 함께 들어옵니다. 거기서 피해자(alice) 노트의 id 를 확보하세요.",
+            "유출된 alice 노트 id 로 GET /notes/<id> 를 호출하세요 — 권한 체크가 워크스페이스 범위로 잘못돼 열립니다. '유출→악용' 2단계입니다.",
+        ),
         seed_builder_attr="build_hard_seed_data",
     ),
     ("sqli", "easy", "notes"): _SlotSpec(
@@ -77,12 +91,22 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         "build_easy_sqli_slot",
         "노트 검색 기능(GET /notes/search?q=)에 SQL 인젝션이 있습니다. 비공개 노트에 심긴 flag 를 빼내세요.",
         "검색 쿼리가 입력을 문자열로 이어붙여 SQL 인젝션이 가능하다 — UNION 으로 비공개 노트 본문 유출.",
+        hints=(
+            "검색어가 SQL 에 그대로 들어가는지부터 확인하세요. GET /notes/search?q=' 처럼 작은따옴표 하나로 반응(에러/변화)을 보세요.",
+            "UNION SELECT 로 다른 행을 결과에 이어붙일 수 있습니다. 먼저 원래 쿼리의 컬럼 수를 맞추는 게 관건입니다.",
+            "q 파라미터에 UNION 인젝션으로 비공개 노트의 본문 컬럼(flag 가 든 곳)을 결과에 실어 유출하세요.",
+        ),
     ),
     ("hard_sqli", "hard", "notes"): _SlotSpec(
         "engine.slots.hard_sqli",
         "build_hard_sqli_slot",
         "고급 검색(GET /notes/search/advanced)의 exclude 파라미터로 비공개 노트 본문을 유출해 flag 를 찾으세요.",
         "exclude 값이 파라미터 바인딩처럼 보이지만 실제로는 문자열 보간된다(prepared statement 위장) — UNION 인젝션으로 유출.",
+        hints=(
+            "'바인딩처럼 보이지만 실제로는 보간된다'가 과제의 핵심입니다. q 가 아니라 exclude 파라미터를 의심하세요.",
+            "정상 검색은 멀쩡한데 exclude 에만 특수문자를 넣으면 동작이 달라지는 지점을 찾으세요 — 거기가 문자열로 보간되는 자리입니다.",
+            "GET /notes/search/advanced 의 exclude 로 UNION 서브쿼리를 주입해 비공개 노트 본문을 결과에 포함시키세요.",
+        ),
     ),
     ("xss", "easy", "notes"): _SlotSpec(
         "engine.slots.xss",
@@ -98,6 +122,11 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         "힌트: /status 로 내부 서비스가 어디 있는지부터 파악하세요.",
         "fetch 의 내부 URL 차단이 빠져(SSRF), 서버를 통해 /internal/services 로 1차 피벗→vault_token 획득, "
         "그 토큰으로 /internal/vault 2차 피벗→flag. 내부는 /fetch 가 붙이는 신뢰 헤더로만 도달 가능. 2-hop 추리 체인.",
+        hints=(
+            "이 도구는 서버가 '대신' URL 에 접속해 줍니다 — 외부의 내가 못 가는 내부로 서버를 심부름 보낼 수 있다는 뜻입니다. 먼저 /status 로 내부에 어떤 서비스가 있는지 파악하세요.",
+            "URL 확인 도구(fetch)로 서버가 내부 주소(/internal/services)에 대신 접근하게 만들어, 다음 단계에 쓸 vault_token 을 얻으세요(1차 피벗).",
+            "얻은 vault_token 을 이용해 같은 도구로 /internal/vault 에 한 번 더 피벗해 flag 를 꺼내세요 — 내부는 서버의 fetch 가 붙이는 신뢰 헤더로만 도달됩니다(2-hop).",
+        ),
         template="gateway",
         health_check_path="/status",
     ),
@@ -110,6 +139,11 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         "재설정 토큰이 예측 가능(md5(username+salt))하게 생성된다. 학생은 (1) 사용자 목록에서 admin 확인 "
         "(2) 내 계정 재설정 메일에서 토큰·salt 관찰 (3) 토큰=md5(username+salt) 역추론 (4) admin 토큰 계산·위조 "
         "(5) admin 비번 재설정→로그인→flag. 여러 단계를 관찰·추론·연결해야 풀리는 계정 탈취 체인.",
+        hints=(
+            "한 번에 뚫는 문제가 아닙니다. 비밀번호 재설정 토큰이 어떻게 만들어지는지, 먼저 내 계정(guest)으로 재설정을 걸어 토큰과 salt 를 관찰해 규칙을 찾으세요.",
+            "사용자 목록에서 admin 을 확인하고, 관찰한 값으로 '토큰 = md5(username + salt)' 규칙을 역추론하세요 — 토큰이 사용자 이름만으로 계산된다는 게 허점입니다.",
+            "그 규칙으로 admin 의 재설정 토큰을 직접 계산·위조해 admin 비밀번호를 재설정하고, 로그인해 관리자 페이지의 flag 를 여세요.",
+        ),
         template="accounts",
         health_check_path="/users",
     ),
@@ -120,6 +154,11 @@ _SLOTS: dict[tuple[str, str, str], _SlotSpec] = {
         "flag 는 관리자 전용 페이지(GET /admin/flag)에 있는데 당신은 일반 사용자입니다. "
         "받은 토큰을 뜯어보고 관리자 권한을 얻을 방법을 찾아 flag 를 획득하세요.",
         "JWT 서명 검증이 빠져(verify_token 의 서명 비교 제거), 서명값과 무관하게 payload(role:\"admin\")를 위조한 토큰이 통과한다 → 관리자 전용 /admin/flag 접근. 토큰 구조 분석·위조의 다단계 추론이 필요.",
+        hints=(
+            "받은 세션 토큰(JWT)은 암호가 아니라 인코딩입니다. 점(.)으로 나뉜 가운데 조각(payload)을 base64 디코드해 안에 뭐가 들었는지 보세요.",
+            "payload 에 역할을 나타내는 role 필드가 보이나요? 서버가 서명을 제대로 검증하지 않으면 이 값을 바꿔도 통과합니다 — 정말 그런지 의심하세요.",
+            "role 을 admin 으로 바꾼 payload 로 토큰을 다시 만들어 GET /admin/flag 에 그 토큰으로 접근하세요 — 서명 검증이 없어 위조 토큰이 통합니다.",
+        ),
         template="portal",
         health_check_path="/",
     ),
@@ -254,6 +293,7 @@ def engine_source(vuln_type: str, tier: str, *, template: str = "notes") -> Prov
                 slot_builder=slot_builder,
                 task_prompt=spec.task_prompt,
                 solution_summary=spec.solution_summary,
+                hints=list(spec.hints) or None,
                 **kwargs,
             )
         except BaseException:

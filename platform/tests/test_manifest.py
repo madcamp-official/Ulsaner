@@ -88,6 +88,25 @@ def test_public_view_hides_flag_and_internal(tmp_path):
     assert "_internal" not in view
 
 
+def test_public_view_surfaces_hints_when_present(tmp_path):
+    # 온디맨드 힌트(entry.hints)는 학생 노출 안전 필드 — 있으면 뷰에 통과시키되 flag 는 여전히 숨긴다.
+    data = copy.deepcopy(VALID_MANIFEST)
+    data["entry"]["hints"] = ["관찰부터", "다음 단계", "구체적 방법"]
+    m = load_manifest(write_manifest(tmp_path, data))
+
+    view = m.public_view()
+    assert view["entry"]["hints"] == ["관찰부터", "다음 단계", "구체적 방법"]
+    assert m.hints == ["관찰부터", "다음 단계", "구체적 방법"]
+    assert "flag" not in view and "_internal" not in view
+
+
+def test_public_view_omits_hints_when_absent(tmp_path):
+    # 힌트 없는 번들(fixture 등)은 뷰에 hints 키가 없고, .hints 는 빈 리스트(하위호환).
+    m = load_manifest(write_manifest(tmp_path, VALID_MANIFEST))
+    assert m.hints == []
+    assert "hints" not in m.public_view()["entry"]
+
+
 def test_reveal_returns_educational_internal_without_flag(tmp_path):
     data = copy.deepcopy(VALID_MANIFEST)
     data["_internal"] = {

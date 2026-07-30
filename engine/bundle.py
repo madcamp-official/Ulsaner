@@ -77,6 +77,7 @@ def generate_bundle(
     exploit_builders: dict[str, Callable[[dict, str], exploit_gen.ReferenceExploit]] | None = None,
     reorder_var_name: str = "note",
     health_check_path: str = "/notes/2",
+    hints: list[str] | None = None,
 ) -> pathlib.Path:
     if exploit_builders is None:
         exploit_builders = _EXPLOIT_BUILDERS
@@ -114,6 +115,10 @@ def generate_bundle(
             with open(exploit_json_path, "w") as f:
                 json.dump(exploit_dict, f, indent=2)
 
+            # 힌트도 task_prompt 와 같은 {attacker_token} 치환을 거친다(토큰을 언급하는 힌트 지원).
+            resolved_hints = (
+                [_resolve_task_prompt(h, seed_data) for h in hints] if hints else None
+            )
             m = manifest_mod.build_manifest(
                 vuln_type=slot.vuln_type,
                 tier=slot.tier,
@@ -121,6 +126,7 @@ def generate_bundle(
                 task_prompt=_resolve_task_prompt(task_prompt, seed_data),
                 reference_exploit_path="exploits/reference.json",
                 solution_summary=solution_summary,
+                hints=resolved_hints,
             )
             manifest_mod.write_manifest(output_dir, m, SCHEMA_PATH)
             return output_dir

@@ -57,6 +57,30 @@ def _validate_vuln_type(vuln_type: str) -> None:
     jsonschema.validate(m, schema)
 
 
+def test_build_manifest_embeds_hints_and_validates(tmp_path):
+    # 힌트를 넘기면 entry.hints 로 실리고 스키마를 통과한다(온디맨드 힌트 계약).
+    schema = json.loads(SCHEMA_PATH.read_text())
+    m = build_manifest(
+        vuln_type="idor", tier="easy", flag="FLAG{abc}",
+        task_prompt="prompt", reference_exploit_path="exploits/reference.json",
+        solution_summary="summary", hints=["관찰부터", "다음 단계", "구체적 방법"],
+    )
+    jsonschema.validate(m, schema)
+    assert m["entry"]["hints"] == ["관찰부터", "다음 단계", "구체적 방법"]
+
+
+def test_build_manifest_without_hints_omits_key(tmp_path):
+    # 힌트를 안 넘기면 entry 에 hints 키가 없다 — 기존 번들·fixture 형태 그대로(하위호환).
+    schema = json.loads(SCHEMA_PATH.read_text())
+    m = build_manifest(
+        vuln_type="idor", tier="easy", flag="FLAG{abc}",
+        task_prompt="prompt", reference_exploit_path="exploits/reference.json",
+        solution_summary="summary",
+    )
+    jsonschema.validate(m, schema)
+    assert "hints" not in m["entry"]
+
+
 def test_schema_accepts_hard_sqli_vuln_type():
     _validate_vuln_type("hard_sqli")
 

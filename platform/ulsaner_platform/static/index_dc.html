@@ -334,9 +334,9 @@ const fmt = (s) => Math.floor(s / 60) + ":" + pad2(s % 60);
 // '준비 중' 슬롯이 생기면 여기 항목만 추가하면 되도록 유지).
 const UPCOMING = [];
 
-// 취약점 유형별 단계 힌트(개념 → 관찰 지점 → 구체적 방법). 인스턴스별 정밀 힌트(정답이
-// 정확히 어디 심겼는지)는 엔진이 만들어 manifest 로 실어야 하므로(계약 변경 필요) 향후 과제로
-// 남기고, 여기선 계약을 건드리지 않고 플랫폼이 자체 작성하는 '방법론' 힌트만 준다. 키는 카드의
+// 취약점 유형별 단계 힌트(개념 → 관찰 지점 → 구체적 방법) — **폴백**용이다. 엔진 생성 챌린지는
+// manifest.entry.hints 로 그 문제별 구체 힌트를 실어 보내므로 sessionView 가 그걸 우선 쓰고,
+// manifest 힌트가 없을 때(예: fixture)만 여기 유형별 일반 힌트로 떨어진다. 키는 카드의
 // type(대문자)과 일치시킨다. 매칭 실패 시 힌트 섹션은 그냥 숨는다.
 const HINTS = {
   IDOR: [
@@ -433,7 +433,7 @@ async function restoreSession() {
     summary: (data.entry && data.entry.task_prompt) || "", locked: false,
   };
   const port = (String(data.url).match(/:(\d+)/) || [])[1] || "";
-  state.instance = { challenge: ch, id: data.challenge_id, url: data.url, port, task: (data.entry && data.entry.task_prompt) || ch.summary };
+  state.instance = { challenge: ch, id: data.challenge_id, url: data.url, port, task: (data.entry && data.entry.task_prompt) || ch.summary, hints: (data.entry && data.entry.hints) || null };
   state.phase = "running"; state.ttl = data.ttl_remaining || 0; state.hintLevel = 0;
   render(); startTtlTimer();
 }
@@ -458,7 +458,7 @@ async function start(id) {
   const finish = () => {
     if (!ok || !data) { state.phase = "catalog"; state.instance = null; alert("인스턴스 배포에 실패했습니다. Docker 데몬을 확인하세요."); render(); return; }
     const port = (data.url.match(/:(\d+)/) || [])[1] || "";
-    state.instance = { challenge: ch, id: data.challenge_id, url: data.url, port, task: (data.entry && data.entry.task_prompt) || ch.summary };
+    state.instance = { challenge: ch, id: data.challenge_id, url: data.url, port, task: (data.entry && data.entry.task_prompt) || ch.summary, hints: (data.entry && data.entry.hints) || null };
     state.phase = "running"; state.ttl = 30 * 60; render();
     startTtlTimer();
   };
@@ -662,8 +662,9 @@ function sessionView() {
       .map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) var(--space-6);border-bottom:1px solid var(--color-divider);">
         <dt style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">${k}</dt>
         <dd style="margin:0;font-size:13.5px;font-variant-numeric:tabular-nums;">${esc(v)}</dd></div>`).join("");
-    // 유형별 단계 힌트(막혔을 때 한 단계씩). 해결 후엔 숨긴다. 유형에 힌트가 없으면 섹션 자체가 빠진다.
-    const hintList = (ch && HINTS[ch.type]) || [];
+    // 단계 힌트(막혔을 때 한 단계씩). 해결 후엔 숨긴다. 인스턴스 manifest 가 힌트를 실어 보내면
+    // (엔진 생성 챌린지) 그 문제별 힌트를 우선 쓰고, 없으면 유형별 일반 힌트로 폴백한다.
+    const hintList = ((inst && inst.hints && inst.hints.length) ? inst.hints : (ch && HINTS[ch.type])) || [];
     const shown = Math.min(state.hintLevel, hintList.length);
     const hintBox = (!isSolved && hintList.length) ? `<div style="border-top:2px solid var(--color-text);padding:var(--space-8);">
         <div style="display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-4);margin-bottom:var(--space-3);">
