@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Ulsaner — 취약점 주입 훈련 엔진</title>
+<title>VITE — 취약점 주입 훈련 엔진</title>
 <!-- Modernist 디자인 시스템 토큰·컴포넌트 (claude.ai/design 핸드오프, styles.css 인라인) -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap');
@@ -424,7 +424,7 @@ function head() {
   const navCtx = state.phase === "catalog" ? "GET /challenges" : "Session";
   return `
   <div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-4) var(--space-8);border-bottom:2px solid var(--color-text);">
-    <span style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:20px;letter-spacing:-0.02em;">ULSANER</span>
+    <span style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:20px;letter-spacing:-0.02em;">VITE</span>
     <span style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">Vulnerability Injection Training Engine</span>
     <a href="/dashboard" style="margin-left:auto;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED62};">대시보드</a>
     <span style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent-700);">${navCtx}</span>
