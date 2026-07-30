@@ -111,6 +111,22 @@ class ChallengeService:
         active = self._active.get(challenge_id)
         return active.instance.host_port if active else None
 
+    def session_view(self, challenge_id: str) -> dict | None:
+        """진행 중 세션의 학생용 뷰 + 슬롯 이름 + 서버 기준 남은 TTL(초).
+
+        새로고침 복원용 — 브라우저 쿠키의 challenge_id 로 현재 살아있는 인스턴스를
+        되찾는다. 없으면(만료·정리됨) None. 남은 TTL 은 클라이언트 타이머가 아니라
+        서버의 created_at 에서 계산해 새로고침해도 실제 만료 시각과 어긋나지 않는다.
+        """
+        active = self._active.get(challenge_id)
+        if active is None:
+            return None
+        view = self._student_view(challenge_id)
+        view["name"] = active.name
+        remaining = self._ttl - (self._clock() - active.created_at)
+        view["ttl_remaining"] = max(0, int(remaining))
+        return view
+
     # --- 스핀업 ---------------------------------------------------------
     def spin_up(
         self,

@@ -60,6 +60,11 @@ class Manifest:
         return self._data["entry"]["task_prompt"]
 
     @property
+    def hints(self) -> list[str]:
+        """온디맨드 단계 힌트(선택 필드). 없으면 빈 리스트."""
+        return list(self._data["entry"].get("hints") or [])
+
+    @property
     def flag(self) -> str:
         return self._data["flag"]
 
@@ -75,11 +80,16 @@ class Manifest:
     # --- 학생 노출용 (블랙박스) ---
     def public_view(self) -> dict:
         """학생에게 노출 가능한 필드만. flag·_internal 은 절대 포함하지 않는다(설계 §5)."""
+        entry: dict = {"port": self.port, "task_prompt": self.task_prompt}
+        # 힌트는 학생 노출 안전 필드(entry 하위) — 있을 때만 뷰에 싣는다.
+        hints = self.hints
+        if hints:
+            entry["hints"] = hints
         return {
             "id": self.id,
             "vuln_type": self.vuln_type,
             "tier": self.tier,
-            "entry": {"port": self.port, "task_prompt": self.task_prompt},
+            "entry": entry,
         }
 
     # --- 정답 제출 후 교육용 리빌 ---

@@ -11,12 +11,17 @@ def build_manifest(
     task_prompt: str,
     reference_exploit_path: str,
     solution_summary: str,
+    hints: list[str] | None = None,
 ) -> dict:
+    entry: dict = {"port": 8000, "task_prompt": task_prompt}
+    # 힌트는 선택 — 있을 때만 entry 에 싣는다(없으면 기존 manifest 형태 그대로, 하위호환).
+    if hints:
+        entry["hints"] = list(hints)
     return {
         "id": str(uuid.uuid4()),
         "vuln_type": vuln_type,
         "tier": tier,
-        "entry": {"port": 8000, "task_prompt": task_prompt},
+        "entry": entry,
         "flag": flag,
         "verify": {"method": "flag_submit"},
         "_internal": {
