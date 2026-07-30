@@ -92,6 +92,7 @@ class ChallengeService:
         clock: Clock = time.time,
         ttl_seconds: float = DEFAULT_TTL_SECONDS,
         max_active: int | None = DEFAULT_MAX_ACTIVE,
+        public_base_url: str | None = None,
     ):
         self._deploy = deploy_fn
         self._stop = stop_fn
@@ -99,8 +100,16 @@ class ChallengeService:
         self._clock = clock
         self._ttl = ttl_seconds
         self._max_active = max_active
+        # 배포 환경(Cloudflare Tunnel 등)에서 컨테이너의 127.0.0.1:<port>는 학생 브라우저에서
+        # 무의미하므로, 설정돼 있으면 플랫폼 자신의 공인 URL(+프록시 라우트)을 대신 준다.
+        self._public_base_url = public_base_url.rstrip("/") if public_base_url else None
         self._active: dict[str, ActiveChallenge] = {}
         self._log: list[Attempt] = []  # teardown 후에도 남는 통계용 로그
+
+    def get_host_port(self, challenge_id: str) -> int | None:
+        """활성 챌린지의 호스트 포트. 없거나 이미 종료됐으면 None(프록시가 404 처리에 씀)."""
+        active = self._active.get(challenge_id)
+        return active.instance.host_port if active else None
 
     # --- 스핀업 ---------------------------------------------------------
     def spin_up(
@@ -154,7 +163,9 @@ class ChallengeService:
         active = self._active[challenge_id]
         view = active.manifest.public_view()  # flag/_internal 은 여기서 이미 제거됨
         view["challenge_id"] = challenge_id
-        view["url"] = active.instance.url
+        view["url"] = (
+            f"{self._public_base_url}/play" if self._public_base_url else active.instance.url
+        )
         return view
 
     # --- flag 판정 ------------------------------------------------------

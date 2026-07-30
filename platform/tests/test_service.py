@@ -81,6 +81,35 @@ def test_spin_up_deploys_with_manifest_port():
     assert deployer.calls[0]["container_port"] == 8000  # fixture manifest.entry.port
 
 
+def test_get_host_port_returns_instance_port_for_active_challenge():
+    svc = make_service()
+    view = svc.spin_up(FIXTURE)
+    assert svc.get_host_port(view["challenge_id"]) == 55000
+
+
+def test_get_host_port_is_none_for_unknown_or_torn_down_challenge():
+    svc = make_service()
+    view = svc.spin_up(FIXTURE)
+    svc.teardown(view["challenge_id"])
+    assert svc.get_host_port(view["challenge_id"]) is None
+    assert svc.get_host_port("no-such-id") is None
+
+
+def test_url_uses_public_base_url_play_path_when_configured():
+    svc = ChallengeService(
+        deploy_fn=FakeDeployer(), stop_fn=FakeStopper(), clock=FakeClock(),
+        public_base_url="https://ulsaner.madcamp-kaist.org/",  # 트레일링 슬래시 정규화 확인
+    )
+    view = svc.spin_up(FIXTURE)
+    assert view["url"] == "https://ulsaner.madcamp-kaist.org/play"
+
+
+def test_url_falls_back_to_raw_instance_url_when_public_base_url_unset():
+    svc = make_service()
+    view = svc.spin_up(FIXTURE)
+    assert view["url"] == "http://127.0.0.1:55000"
+
+
 # --- flag 판정 ------------------------------------------------------------
 
 def test_submit_correct_flag_returns_true():

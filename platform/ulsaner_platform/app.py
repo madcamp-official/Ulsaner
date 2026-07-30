@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+import httpx
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -183,7 +185,10 @@ def create_app(
     vibecutter_result_path 가 가리키는 파일이 있으면 /stats 가 자동도구 성공률을 읽는다
     (None 이면 VibeCutter 지표 비활성 — 항상 '벤치마크 대기').
     """
-    service = service or ChallengeService()
+    # 배포 환경(Cloudflare Tunnel 등)에선 이 값을 설정해 접속 URL을 플랫폼 자신의 공인
+    # 도메인(+아래 캐치올 프록시)으로 돌린다. 로컬 개발에선 미설정 = 기존 동작 그대로.
+    public_base_url = os.environ.get("ULSANER_PUBLIC_BASE_URL")
+    service = service or ChallengeService(public_base_url=public_base_url)
     challenges = DEFAULT_CHALLENGES if challenges is None else challenges
     by_name = {c.name: c for c in challenges}
 
@@ -238,7 +243,7 @@ def create_app(
         }
 
     @app.post("/challenges")
-    def spin_up(req: SpinUpRequest) -> dict:
+    def spin_up(req: SpinUpRequest, response: Response) -> dict:
         spec = by_name.get(req.name)
         if spec is None:
             raise HTTPException(status_code=404, detail=f"알 수 없는 챌린지: {req.name}")
@@ -258,7 +263,7 @@ def create_app(
                 detail="인스턴스 생성에 실패했습니다 (Docker 데몬·엔진 상태를 확인하세요).",
             ) from exc
         try:
-            return service.spin_up(bundle_dir, name=spec.name, cleanup=cleanup)
+            result = service.spin_up(bundle_dir, name=spec.name, cleanup=cleanup)
         except CapacityError as exc:  # 경합으로 그 사이 꽉 찬 경우
             cleanup()
             raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -267,6 +272,13 @@ def create_app(
                 status_code=503,
                 detail="인스턴스 배포에 실패했습니다 (컨테이너가 뜨지 않음).",
             ) from exc
+        # 이 브라우저가 지금 어떤 챌린지에 접속 중인지 기억해, 아래 캐치올 프록시가
+        # 절대경로 fetch(/notes/search 등)를 올바른 컨테이너로 전달할 수 있게 한다.
+        response.set_cookie(
+            "ulsaner_instance", result["challenge_id"],
+            max_age=1800, httponly=True, samesite="lax",
+        )
+        return result
 
     @app.post("/challenges/{challenge_id}/submit")
     def submit(challenge_id: str, req: SubmitRequest) -> dict:
@@ -282,9 +294,10 @@ def create_app(
         return resp
 
     @app.delete("/challenges/{challenge_id}")
-    def teardown(challenge_id: str) -> dict:
+    def teardown(challenge_id: str, response: Response) -> dict:
         # 인스턴스 종료(수동 teardown). 이미 없으면 조용히 성공(멱등).
         service.teardown(challenge_id)
+        response.delete_cookie("ulsaner_instance")
         return {"ok": True}
 
     @app.get("/stats")
@@ -315,6 +328,40 @@ def create_app(
             "vibecutter": vibecutter,
             "vibecutter_detail": vibecutter_detail,
         }
+
+    # 캐치올 리버스 프록시 — 반드시 다른 모든 라우트/마운트 뒤 마지막에 등록한다
+    # (Starlette는 등록 순서대로 매칭하므로, 위의 구체적인 경로들이 먼저 매칭되고
+    # 이 라우트는 나머지 전부를 받는다). 챌린지 컨테이너는 127.0.0.1:<랜덤포트>에만
+    # 바인딩돼 학생 브라우저에서 직접 못 여니, "이 브라우저가 지금 붙어있는 챌린지"를
+    # 쿠키로 기억해두고 매칭 안 되는 모든 요청을 그 컨테이너로 그대로 전달한다.
+    # 챌린지 프론트엔드가 fetch("/notes/search") 처럼 절대경로로 자기 API를 부르므로,
+    # 경로 접두어 방식(/instances/<id>/...) 대신 쿠키 기반으로 라우팅한다.
+    @app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    async def proxy_to_active_instance(full_path: str, request: Request) -> Response:
+        challenge_id = request.cookies.get("ulsaner_instance")
+        if not challenge_id:
+            raise HTTPException(status_code=404)
+        port = service.get_host_port(challenge_id)
+        if port is None:
+            raise HTTPException(status_code=404)
+        # /play = 챌린지 앱의 루트. 그 외 경로는 동일 경로 그대로 전달.
+        target_path = "" if full_path == "play" else full_path
+        upstream_url = f"http://127.0.0.1:{port}/{target_path}"
+        async with httpx.AsyncClient() as client:
+            upstream = await client.request(
+                request.method,
+                upstream_url,
+                params=request.query_params,
+                headers={
+                    k: v for k, v in request.headers.items()
+                    if k.lower() not in ("host", "content-length")
+                },
+                content=await request.body(),
+                timeout=10.0,
+            )
+        excluded_headers = {"content-encoding", "content-length", "transfer-encoding", "connection"}
+        headers = {k: v for k, v in upstream.headers.items() if k.lower() not in excluded_headers}
+        return Response(content=upstream.content, status_code=upstream.status_code, headers=headers)
 
     return app
 

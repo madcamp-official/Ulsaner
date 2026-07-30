@@ -4,6 +4,8 @@ create_app 에 가짜 배포기를 주입한 ChallengeService 를 넣어 Docker 
 """
 
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -41,6 +43,97 @@ def make_client(vibecutter_result_path: Path | None = None) -> TestClient:
             service=svc, challenges=challenges, vibecutter_result_path=vibecutter_result_path
         )
     )
+
+
+class _DummyChallengeHandler(BaseHTTPRequestHandler):
+    """실제 챌린지 컨테이너 대역 — 경로별로 다른 본문을 돌려줘 프록시 전달을 구분한다."""
+
+    def _reply(self):
+        body = f"root:{self.path}" if self.path == "/" else f"path:{self.path}"
+        payload = body.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_GET(self):  # noqa: N802 — http.server 관례
+        self._reply()
+
+    def log_message(self, *args):  # 테스트 출력 조용히
+        pass
+
+
+def make_proxy_client() -> tuple[TestClient, ThreadingHTTPServer]:
+    """/play, /notes/search 등 캐치올 프록시를 검증하기 위해, 진짜 더미 HTTP 서버를
+    백그라운드 스레드로 띄우고 그 실제 포트를 가리키는 가짜 Instance 로 서비스를 구성한다.
+    """
+    dummy = ThreadingHTTPServer(("127.0.0.1", 0), _DummyChallengeHandler)
+    threading.Thread(target=dummy.serve_forever, daemon=True).start()
+    port = dummy.server_address[1]
+
+    svc = ChallengeService(
+        deploy_fn=lambda bundle_dir, *, tag, container_port: Instance(
+            container_id=f"cont-{tag}", host_port=port, url=f"http://127.0.0.1:{port}"
+        ),
+        stop_fn=lambda container_id: None,
+        clock=lambda: 1000.0,
+        public_base_url="https://ulsaner.example.test",
+    )
+    challenges = [
+        Challenge(
+            name="easy-idor-01", vuln_type="idor", tier="easy",
+            task_prompt="다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요.",
+            provision=fixture_source(FIXTURE),
+        )
+    ]
+    client = TestClient(create_app(service=svc, challenges=challenges, vibecutter_result_path=None))
+    return client, dummy
+
+
+def test_spin_up_sets_active_instance_cookie():
+    client = make_client()
+    resp = client.post("/challenges", json={"name": "easy-idor-01"})
+    assert resp.cookies.get("ulsaner_instance") == resp.json()["challenge_id"]
+
+
+def test_teardown_clears_active_instance_cookie():
+    client = make_client()
+    cid = client.post("/challenges", json={"name": "easy-idor-01"}).json()["challenge_id"]
+    assert client.cookies.get("ulsaner_instance") == cid
+
+    client.delete(f"/challenges/{cid}")
+    assert client.cookies.get("ulsaner_instance") is None
+
+
+def test_proxy_forwards_play_and_absolute_paths_to_active_instance():
+    client, dummy = make_proxy_client()
+    try:
+        resp = client.post("/challenges", json={"name": "easy-idor-01"})
+        assert resp.json()["url"] == "https://ulsaner.example.test/play"
+
+        # /play → 챌린지 앱의 루트(/)로 전달됨
+        play = client.get("/play")
+        assert play.status_code == 200
+        assert play.text == "root:/"
+
+        # 절대경로 fetch(/notes/search?q=...)도 동일 경로로 그대로 전달됨
+        search = client.get("/notes/search?q=x")
+        assert search.status_code == 200
+        assert search.text == "path:/notes/search?q=x"
+    finally:
+        dummy.shutdown()
+
+
+def test_proxy_returns_404_without_active_instance_cookie():
+    client = make_client()  # 스핀업 안 함 → 쿠키 없음
+    assert client.get("/some/unmatched/path").status_code == 404
+
+
+def test_proxy_returns_404_for_stale_or_unknown_instance_cookie():
+    client = make_client()
+    client.cookies.set("ulsaner_instance", "no-such-challenge-id")
+    assert client.get("/play").status_code == 404
 
 
 def test_health_still_ok():
