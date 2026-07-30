@@ -166,7 +166,7 @@ def test_root_serves_dc_design():
     resp = make_client().get("/")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
-    assert "Ulsaner" in resp.text
+    assert "VITE" in resp.text
     assert "취약점 주입 훈련 엔진" in resp.text  # dc 디자인 마커
 
 
