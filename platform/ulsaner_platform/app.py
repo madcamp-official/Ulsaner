@@ -273,6 +273,19 @@ def create_app(
         )
         return result
 
+    @app.get("/challenges/active")
+    def active_session(request: Request) -> dict:
+        # 새로고침 복원 — 이 브라우저의 진행 중 세션을 쿠키로 되찾는다. 만료분을 먼저
+        # 회수해, 자리를 비운 사이 TTL 이 지난 세션은 정직하게 404(종료됨)로 알린다.
+        challenge_id = request.cookies.get("ulsaner_instance")
+        if not challenge_id:
+            raise HTTPException(status_code=404, detail="활성 세션이 없습니다.")
+        service.sweep_expired()
+        view = service.session_view(challenge_id)
+        if view is None:
+            raise HTTPException(status_code=404, detail="세션이 만료되었거나 종료되었습니다.")
+        return view
+
     @app.post("/challenges/{challenge_id}/submit")
     def submit(challenge_id: str, req: SubmitRequest) -> dict:
         try:

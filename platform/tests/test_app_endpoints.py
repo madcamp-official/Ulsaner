@@ -97,6 +97,37 @@ def test_spin_up_sets_active_instance_cookie():
     assert resp.cookies.get("ulsaner_instance") == resp.json()["challenge_id"]
 
 
+def test_active_session_restores_running_instance():
+    # 새로고침 복원 — 스핀업 후 쿠키만으로 진행 중 세션(뷰+슬롯이름+남은 TTL)을 되찾는다.
+    client = make_client()
+    spun = client.post("/challenges", json={"name": "easy-idor-01"}).json()
+
+    resp = client.get("/challenges/active")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["challenge_id"] == spun["challenge_id"]
+    assert body["name"] == "easy-idor-01"  # 프론트가 카탈로그 카드로 매칭할 슬롯 이름
+    assert body["url"] == spun["url"]
+    assert body["entry"]["task_prompt"]
+    assert body["ttl_remaining"] == 1800  # clock 고정 → 방금 스핀업했으니 TTL 전체가 남음
+    assert "flag" not in body and "_internal" not in body
+
+
+def test_active_session_404_without_cookie():
+    # 활성 세션이 없으면(쿠키 없음) 404 → 프론트는 조용히 카탈로그로 남는다.
+    assert make_client().get("/challenges/active").status_code == 404
+
+
+def test_active_session_404_after_teardown():
+    # 종료된 세션은 쿠키가 남아 있어도 정직하게 404(만료·종료됨)로 알린다.
+    client = make_client()
+    cid = client.post("/challenges", json={"name": "easy-idor-01"}).json()["challenge_id"]
+    client.delete(f"/challenges/{cid}")
+    # DELETE 가 쿠키를 지우므로 강제로 되돌려, '쿠키는 있으나 인스턴스는 없는' 상태를 검증.
+    client.cookies.set("ulsaner_instance", cid)
+    assert client.get("/challenges/active").status_code == 404
+
+
 def test_teardown_clears_active_instance_cookie():
     client = make_client()
     cid = client.post("/challenges", json={"name": "easy-idor-01"}).json()["challenge_id"]

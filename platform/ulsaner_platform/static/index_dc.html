@@ -340,6 +340,17 @@ const state = {
 };
 let ttlTimer = null;
 
+// 남은 시간 카운트다운. 스핀업 완료 후에도, 새로고침 복원 후에도 같은 타이머를 쓴다
+// (state.ttl 은 서버가 준 '실제 남은 초'에서 시작하므로 새로고침해도 어긋나지 않는다).
+function startTtlTimer() {
+  clearInterval(ttlTimer);
+  ttlTimer = setInterval(() => {
+    if (state.ttl <= 1) { clearInterval(ttlTimer); exit(true); return; }
+    state.ttl -= 1;
+    const t = $("ttl"); if (t) { t.textContent = fmt(state.ttl); if (state.ttl < 60) t.style.color = "var(--color-accent)"; }
+  }, 1000);
+}
+
 async function api(path, opts) {
   const res = await fetch(path, opts);
   let data = null; try { data = await res.json(); } catch (e) {}
@@ -357,6 +368,24 @@ async function loadCatalog() {
 async function loadStats() {
   const { data } = await api("/stats");
   if (data) { state.solved = data.solved; state.attempts = data.attempts; state.byChallenge = data.by_challenge || {}; render(); }
+}
+
+// 새로고침 복원 — 진행 중이던 세션을 서버(쿠키)에서 되찾는다. 예전엔 state 가 JS
+// 메모리에만 있어 새로고침 한 번에 카탈로그로 튕기고 컨테이너만 백그라운드에 남았다.
+// 이제 /challenges/active 가 살아있는 인스턴스의 뷰 + 서버 기준 남은 TTL 을 주면,
+// 실행 중(running) 화면을 그대로 복구한다. 활성 세션이 없으면(404) 조용히 카탈로그.
+async function restoreSession() {
+  const { ok, data } = await api("/challenges/active");
+  if (!ok || !data) return;
+  // 카탈로그 카드가 있으면 그걸 쓰고(성공 뱃지 등 메타 일치), 아직 안 왔으면 뷰로 폴백.
+  const ch = state.challenges.find((c) => c.id === data.name) || {
+    id: data.name, type: (data.vuln_type || "").toUpperCase(), tier: data.tier,
+    summary: (data.entry && data.entry.task_prompt) || "", locked: false,
+  };
+  const port = (String(data.url).match(/:(\d+)/) || [])[1] || "";
+  state.instance = { challenge: ch, id: data.challenge_id, url: data.url, port, task: (data.entry && data.entry.task_prompt) || ch.summary };
+  state.phase = "running"; state.ttl = data.ttl_remaining || 0;
+  render(); startTtlTimer();
 }
 
 async function start(id) {
@@ -381,12 +410,7 @@ async function start(id) {
     const port = (data.url.match(/:(\d+)/) || [])[1] || "";
     state.instance = { challenge: ch, id: data.challenge_id, url: data.url, port, task: (data.entry && data.entry.task_prompt) || ch.summary };
     state.phase = "running"; state.ttl = 30 * 60; render();
-    clearInterval(ttlTimer);
-    ttlTimer = setInterval(() => {
-      if (state.ttl <= 1) { clearInterval(ttlTimer); exit(true); return; }
-      state.ttl -= 1;
-      const t = $("ttl"); if (t) { t.textContent = fmt(state.ttl); if (state.ttl < 60) t.style.color = "var(--color-accent)"; }
-    }, 1000);
+    startTtlTimer();
   };
   setTimeout(finish, Math.max(0, 280 + steps.length * 300 + 220 - (Date.now() - t0)));
 }
@@ -529,7 +553,7 @@ function sessionView() {
     const isSolved = phase === "solved";
     const submitDisabled = isSolved || !state.flagInput.trim();
     const wrong = state.result === "wrong" || state.result === "expired";
-    const wrongBox = wrong ? `<div style="margin-top:var(--space-4);max-width:620px;border-left:4px solid var(--color-accent);padding:var(--space-3) var(--space-4);background:var(--color-accent-100);">
+    const wrongBox = wrong ? `<div id="wrongBox" style="margin-top:var(--space-4);max-width:620px;border-left:4px solid var(--color-accent);padding:var(--space-3) var(--space-4);background:var(--color-accent-100);">
         <div style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:15px;color:var(--color-accent-800);">${state.result === "expired" ? "만료" : "오답"}</div>
         <div style="font-size:13px;color:var(--color-accent-800);opacity:0.85;">${state.result === "expired" ? "인스턴스가 종료되었습니다. 목록에서 다시 시작하세요." : "flag가 일치하지 않습니다. 시도 " + pad2(state.attempts) + "회."}</div>
       </div>` : "";
@@ -595,7 +619,18 @@ function render() {
   $("app").innerHTML = head() + (state.phase === "catalog" ? catalogView() : sessionView());
   const fi = $("flagInput");
   if (fi) {
-    fi.addEventListener("input", (e) => { state.flagInput = e.target.value; if (state.result === "wrong") state.result = null; render(); const n = $("flagInput"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
+    // 입력마다 앱 전체를 다시 그리지 않는다(예전엔 keystroke 마다 innerHTML 을 통째로
+    // 재구성 → 재focus·setSelectionRange 로 커서를 되돌리는 안티패턴이었다. IME 조합·
+    // 커서 튐 위험). 이제 필요한 것만 국소 갱신한다: state 값, 제출 버튼 활성화, 오답 배너.
+    fi.addEventListener("input", (e) => {
+      state.flagInput = e.target.value;
+      const btn = document.querySelector('[data-act="submit"]');
+      if (btn) btn.disabled = state.phase === "solved" || !state.flagInput.trim();
+      if (state.result === "wrong" || state.result === "expired") {
+        state.result = null;
+        const wb = $("wrongBox"); if (wb) wb.remove();
+      }
+    });
     fi.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
   }
   document.querySelectorAll("[data-act]").forEach((el) => el.addEventListener("click", () => {
@@ -608,7 +643,8 @@ function render() {
 }
 
 render();
-loadCatalog();
+// 카탈로그가 온 뒤 세션을 복원해, 진행 중이던 인스턴스를 실제 카드에 매칭한다.
+loadCatalog().then(restoreSession);
 loadStats();
 </script>
 </body>
