@@ -32,7 +32,7 @@ from ulsaner_platform.service import (
     ChallengeNotFound,
     ChallengeService,
 )
-from ulsaner_platform.sources import Provision, engine_source, fixture_source
+from ulsaner_platform.sources import Provision, engine_source
 
 _log = logging.getLogger("ulsaner.platform")
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -40,7 +40,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 # 파일이 있으면 /stats 가 자동도구 성공률을 읽어 대시보드에 채운다. 없으면 '벤치마크 대기'.
 _DEFAULT_VIBECUTTER_PATH = _REPO_ROOT / "platform" / "data" / "vibecutter_result.json"
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
-_FIXTURE_DIR = _REPO_ROOT / "platform" / "fixtures" / "easy-idor-01"
 
 
 @dataclass(frozen=True)
@@ -58,15 +57,9 @@ class Challenge:
     provision: Provision
 
 
-# fixture(고정 flag) = 테스트·데모 기준, live(엔진 생성) = 인스턴스마다 랜덤 flag(thesis 실현).
+# 전부 live(엔진 생성) — 인스턴스마다 랜덤 flag(thesis 실현). 고정 flag fixture(easy-idor-01)는
+# 이제 카탈로그에서 뺐다(live 로 충분히 대체됨). fixture 소스·번들 자체는 테스트용으로 유지.
 DEFAULT_CHALLENGES: list[Challenge] = [
-    Challenge(
-        name="easy-idor-01",
-        vuln_type="idor",
-        tier="easy",
-        task_prompt="당신은 alice 계정입니다. 다른 사용자의 비공개 노트를 읽어 flag 를 획득하세요. (고정 fixture)",
-        provision=fixture_source(_FIXTURE_DIR),
-    ),
     Challenge(
         name="easy-idor-live",
         vuln_type="idor",
