@@ -111,6 +111,15 @@ class ChallengeService:
         active = self._active.get(challenge_id)
         return active.instance.host_port if active else None
 
+    def get_active_hints(self, challenge_id: str) -> list[str]:
+        """활성 챌린지의 온디맨드 힌트(없으면 빈 리스트).
+
+        캐치올 프록시가 챌린지 앱 HTML 응답에 힌트 오버레이를 주입할 때 쓴다 —
+        '인스턴스 안에서' 힌트를 보게 하는 경로. flag 는 절대 포함하지 않는다(manifest.hints).
+        """
+        active = self._active.get(challenge_id)
+        return active.manifest.hints if active else []
+
     def session_view(self, challenge_id: str) -> dict | None:
         """진행 중 세션의 학생용 뷰 + 슬롯 이름 + 서버 기준 남은 TTL(초).
 

@@ -9,7 +9,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from ulsaner_platform.app import Challenge, create_app
+from ulsaner_platform.app import (
+    Challenge,
+    _hint_overlay_html,
+    _inject_hint_overlay,
+    create_app,
+)
 from ulsaner_platform.service import ChallengeService
 from ulsaner_platform.sources import fixture_source
 
@@ -378,3 +383,27 @@ def test_dashboard_page_serves():
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
     assert "VibeCutter" in resp.text
+
+
+def test_hint_overlay_html_embeds_hints_and_marker():
+    # 주입 조각엔 고유 마커·플로팅 버튼·힌트 문구가 담긴다(자기완결형 오버레이).
+    html = _hint_overlay_html(["첫 힌트", "둘째 힌트"])
+    assert "__vite_hint_root" in html
+    assert "첫 힌트" in html and "둘째 힌트" in html
+    assert "postMessage" in html  # 부모(iframe) 동기화 훅
+
+
+def test_inject_hint_overlay_inserts_before_body_and_is_idempotent():
+    page = b"<html><body><h1>hi</h1></body></html>"
+    once = _inject_hint_overlay(page, ["h1"])
+    assert b"__vite_hint_root" in once
+    assert once.index(b"__vite_hint_root") < once.index(b"</body>")
+    # 이미 주입된 페이지엔 다시 넣지 않는다(멱등) — 마커로 판별.
+    twice = _inject_hint_overlay(once, ["h1"])
+    assert twice == once
+
+
+def test_inject_hint_overlay_appends_when_no_body_tag():
+    page = b"<div>no body</div>"
+    out = _inject_hint_overlay(page, ["h1"])
+    assert out.startswith(page) and b"__vite_hint_root" in out
