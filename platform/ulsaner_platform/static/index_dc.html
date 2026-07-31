@@ -678,8 +678,19 @@ function sessionView() {
           ? `<button class="btn btn-secondary" data-act="hint" style="margin-top:var(--space-4);">${shown === 0 ? "힌트 열기" : "다음 힌트"} →</button>`
           : '<div style="margin-top:var(--space-4);font-size:12.5px;color:color-mix(in srgb,var(--color-text) 50%,transparent);">힌트를 모두 열었습니다 — 이 유형의 접근을 처음부터 다시 훑어보세요.</div>'}
       </div>` : "";
+    // 챌린지를 세션 화면 안에 iframe 으로 임베드 — 탭을 오가지 않고 인스턴스를 다루면서 바로
+    // 아래 힌트 패널을 본다('인스턴스 안에서'). 해결 후엔 인스턴스가 내려가므로 숨긴다. 배포(프록시)
+    // 모드에선 이 iframe 안 챌린지 HTML 에도 힌트 오버레이가 주입되고 same-origin 이라 hintLevel 동기화됨.
+    const embedBox = (!isSolved && inst && inst.url) ? `<div style="border-bottom:2px solid var(--color-text);">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-4);padding:var(--space-4) var(--space-8);">
+          <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--color-accent);">챌린지 인스턴스</div>
+          <a href="${esc(inst.url)}" target="_blank" rel="noreferrer" style="font-size:12px;letter-spacing:0.08em;">전체 화면(새 탭) ↗</a>
+        </div>
+        <iframe src="${esc(inst.url)}" title="챌린지 인스턴스" style="display:block;width:100%;height:60vh;min-height:420px;border:0;border-top:1px solid var(--color-divider);background:#fff;"></iframe>
+      </div>` : "";
     body = `<div style="display:grid;grid-template-columns:1fr 380px;">
       <div style="border-right:2px solid var(--color-text);">
+        ${embedBox}
         <div style="padding:var(--space-8);">
           <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--color-accent);margin-bottom:var(--space-3);">과제</div>
           <p style="margin:0 0 var(--space-3);font-size:14px;line-height:1.6;max-width:52ch;color:color-mix(in srgb,var(--color-text) 65%,transparent);">이 인스턴스는 요청 시점에 새로 생성되었습니다. 정답을 검색해 찾을 수 없습니다.</p>
@@ -743,6 +754,15 @@ function render() {
     else if (a === "hint") revealHint();
   }));
 }
+
+// 임베드한(또는 프록시가 주입한) 챌린지 화면 안 힌트 오버레이가 힌트를 열면 알려온다.
+// 세션 페이지의 hintLevel 과 동기화해, 인스턴스 안에서 힌트를 봐도 ★(힌트 없이 해결) 판정이
+// 정직하게 유지되도록 한다. same-origin(배포 프록시) iframe 에서만 실제로 도달한다.
+window.addEventListener("message", (e) => {
+  const d = e.data;
+  if (!d || d.type !== "vite-hint-used" || typeof d.level !== "number") return;
+  if (d.level > state.hintLevel) { state.hintLevel = d.level; if (state.phase === "running") render(); }
+});
 
 render();
 // 카탈로그가 온 뒤 세션을 복원해, 진행 중이던 인스턴스를 실제 카드에 매칭한다.

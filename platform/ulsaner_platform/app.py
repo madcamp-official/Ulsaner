@@ -156,6 +156,90 @@ def _load_vibecutter(path: Path | None) -> tuple[float | None, dict | None]:
     return float(rate), detail
 
 
+def _hint_overlay_html(hints: list[str]) -> str:
+    """챌린지 앱 HTML 에 주입할, 자기완결형 온디맨드 힌트 오버레이(우하단 플로팅 버튼).
+
+    '인스턴스 안에서' 힌트를 보게 하는 조각 — 학생이 챌린지 앱을 보는 중에도 탭을 옮기지 않고
+    버튼을 눌러 한 단계씩 힌트를 편다(자동 노출 아님). 챌린지 앱의 CSS/JS 와 충돌하지 않도록
+    고유 접두어(__vite_hint_*)·격리 스타일·IIFE 로 감싼다. same-origin 부모(세션 페이지 iframe)가
+    있으면 postMessage 로 '힌트 사용'을 알려 ★(힌트 없이 해결) 판정을 정직하게 유지한다.
+    """
+    payload = json.dumps(hints, ensure_ascii=False).replace("</", "<\\/")
+    return (
+        "<style>"
+        "#__vite_hint_root{position:fixed;right:16px;bottom:16px;z-index:2147483000;"
+        'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;}'
+        "#__vite_hint_root *{box-sizing:border-box;}"
+        "#__vite_hint_btn{cursor:pointer;border:none;background:#b0483a;color:#fff;font-weight:700;"
+        "font-size:14px;padding:10px 14px;border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.25);}"
+        "#__vite_hint_panel{display:none;position:absolute;right:0;bottom:52px;width:320px;max-width:78vw;"
+        "background:#fff;color:#1f2328;border:1px solid #e3e6ea;border-radius:12px;"
+        "box-shadow:0 10px 30px rgba(0,0,0,.22);padding:14px 16px;}"
+        "#__vite_hint_root.open #__vite_hint_panel{display:block;}"
+        "#__vite_hint_root .vh-head{display:flex;justify-content:space-between;align-items:baseline;"
+        "font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#6b7280;margin-bottom:8px;}"
+        "#__vite_hint_root .vh-item{display:grid;grid-template-columns:22px 1fr;gap:8px;padding:8px 0;"
+        "border-top:1px solid #eef0f2;font-size:13.5px;line-height:1.55;}"
+        "#__vite_hint_root .vh-item b{color:#b0483a;font-variant-numeric:tabular-nums;}"
+        "#__vite_hint_root .vh-next{margin-top:10px;width:100%;cursor:pointer;border:1px solid #d7dbe0;"
+        "background:#f6f7f9;color:#1f2328;font-weight:600;font-size:13px;padding:8px;border-radius:8px;}"
+        "#__vite_hint_root .vh-none{margin-top:10px;font-size:12px;color:#9aa0a6;}"
+        "#__vite_hint_root .vh-intro{font-size:12.5px;color:#6b7280;margin:0 0 4px;}"
+        "</style>"
+        '<div id="__vite_hint_root">'
+        '<div id="__vite_hint_panel" role="dialog" aria-label="힌트">'
+        '<div class="vh-head"><span>힌트 · 막혔을 때</span><span id="__vite_hint_count"></span></div>'
+        '<p class="vh-intro" id="__vite_hint_intro">먼저 스스로 시도해 보세요. 필요할 때만 한 단계씩 열립니다.</p>'
+        '<div id="__vite_hint_list"></div>'
+        "</div>"
+        '<button id="__vite_hint_btn" type="button">💡 힌트</button>'
+        "</div>"
+        "<script>(function(){"
+        f"var H={payload};"
+        "if(!H||!H.length)return;"
+        "var root=document.getElementById('__vite_hint_root');"
+        "var btn=document.getElementById('__vite_hint_btn');"
+        "var list=document.getElementById('__vite_hint_list');"
+        "var count=document.getElementById('__vite_hint_count');"
+        "var intro=document.getElementById('__vite_hint_intro');"
+        "var shown=0;"
+        "function esc(s){return String(s).replace(/[&<>\"]/g,function(c){"
+        "return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c];});}"
+        "function render(){"
+        "count.textContent=shown+'/'+H.length;"
+        "intro.style.display=shown?'none':'block';"
+        "var html='';for(var i=0;i<shown;i++){"
+        "html+='<div class=\"vh-item\"><b>'+String(i+1).padStart(2,'0')+"
+        "'</b><span>'+esc(H[i])+'</span></div>';}"
+        "if(shown<H.length){html+='<button class=\"vh-next\" id=\"__vite_hint_next\" type=\"button\">'+"
+        "(shown?'다음 힌트':'힌트 열기')+' \\u2192</button>';}"
+        "else{html+='<div class=\"vh-none\">힌트를 모두 열었습니다.</div>';}"
+        "list.innerHTML=html;"
+        "var nx=document.getElementById('__vite_hint_next');if(nx)nx.addEventListener('click',reveal);}"
+        "function reveal(){if(shown>=H.length)return;shown++;render();"
+        "try{if(window.parent&&window.parent!==window){"
+        "window.parent.postMessage({type:'vite-hint-used',level:shown},'*');}}catch(e){}}"
+        "btn.addEventListener('click',function(){root.classList.toggle('open');"
+        "if(!list.innerHTML)render();});"
+        "render();"
+        "})();</script>"
+    )
+
+
+def _inject_hint_overlay(body: bytes, hints: list[str]) -> bytes:
+    """챌린지 앱 HTML(bytes) 의 </body> 직전에 힌트 오버레이를 끼워 넣는다.
+
+    이미 주입돼 있으면(마커 존재) 건드리지 않는다. </body> 가 없으면 끝에 붙인다.
+    """
+    if b"__vite_hint_root" in body:
+        return body
+    snippet = _hint_overlay_html(hints).encode("utf-8")
+    idx = body.lower().rfind(b"</body>")
+    if idx == -1:
+        return body + snippet
+    return body[:idx] + snippet + body[idx:]
+
+
 class SpinUpRequest(BaseModel):
     name: str
 
@@ -367,7 +451,15 @@ def create_app(
             )
         excluded_headers = {"content-encoding", "content-length", "transfer-encoding", "connection"}
         headers = {k: v for k, v in upstream.headers.items() if k.lower() not in excluded_headers}
-        return Response(content=upstream.content, status_code=upstream.status_code, headers=headers)
+        # '인스턴스 안에서' 힌트 — 챌린지 앱이 HTML 페이지를 돌려줄 때(200) 우하단 힌트 오버레이를
+        # 주입한다. httpx 가 이미 압축을 풀어 .content 를 주고, content-encoding/length 는 위에서
+        # 뺐으므로 본문을 늘려도 Response 가 길이를 다시 계산한다. JSON·정적자원 응답엔 주입 안 함.
+        content = upstream.content
+        if upstream.status_code == 200 and "text/html" in upstream.headers.get("content-type", "").lower():
+            hints = service.get_active_hints(challenge_id)
+            if hints:
+                content = _inject_hint_overlay(content, hints)
+        return Response(content=content, status_code=upstream.status_code, headers=headers)
 
     return app
 
